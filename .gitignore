@@ -1,0 +1,13 @@
+# OS
+.DS_Store
+
+# Env files (never commit real secrets; keep .env.example tracked)
+.env
+.env.*
+!.env.example
+
+# Kiro scratch space (command output, logs)
+.kiro/temp/
+
+# Node (backend-in-repo cases; frontend has its own .gitignore)
+node_modules/
