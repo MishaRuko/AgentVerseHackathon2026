@@ -1,0 +1,11 @@
+Service,Users,Monthly spend,Currency,Category,Period
+Financial Times,,1500,GBP,News,Monthly
+The Economist,,900,GBP,News,Monthly
+Nature,75,1800,GBP,Research,Monthly
+JSTOR,,2400,GBP,Research,Monthly
+Scopus,210,,GBP,Research,Monthly
+Overleaf,120,1800,GBP,Research,Monthly
+Zoom,45,1350,GBP,Productivity,Monthly
+Notion,35,1050,GBP,Productivity,Monthly
+GitHub,85,,GBP,Development,Monthly
+Figma,,1200,GBP,Design,Monthly
