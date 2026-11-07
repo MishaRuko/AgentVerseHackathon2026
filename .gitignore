@@ -11,3 +11,8 @@
 
 # Node (backend-in-repo cases; frontend has its own .gitignore)
 node_modules/
+__pycache__/
+.venv/
+.pytest_cache/
+backend/data/
+*.pyc

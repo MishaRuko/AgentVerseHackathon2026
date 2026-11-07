@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AgentVerse Hackathon 2026",
-  description: "Next.js frontend for the AgentVerse Hackathon 2026 project.",
+  title: "byebye.fyi — Less waste. More possibility.",
+  description: "Find the subscriptions you need. Say goodbye to the spend you don't.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

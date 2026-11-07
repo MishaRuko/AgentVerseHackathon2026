@@ -1,27 +1,45 @@
-import type { HealthResponse } from '@/types';
+import { z } from 'zod';
+import { filterSchema, workspaceSchema } from './schemas';
 
-/**
- * Single typed entry point for all backend calls. Keep the base URL, headers,
- * error handling, and response typing in one place. See
- * `.kiro/steering/backend-integration.md`.
- */
-const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000';
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api/backend';
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
+  const token = typeof window === 'undefined' ? '' : sessionStorage.getItem('workspace-token');
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: {
+      ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init?.headers,
+    },
   });
-
   if (!res.ok) {
-    throw new Error(`API ${res.status} on ${path}: ${await res.text()}`);
+    if (res.status === 401) throw new Error('Workspace locked. Enter your access token in Settings.');
+    const error: unknown = await res.json().catch(() => null);
+    throw new Error(error && typeof error === 'object' && 'detail' in error
+      ? String(error.detail) : `Request failed (${res.status}). Please try again.`);
   }
-
-  return (await res.json()) as T;
+  const result = schema.safeParse(await res.json());
+  if (!result.success) throw new Error('The server returned an unexpected response. Please refresh.');
+  return result.data;
 }
 
+const okSchema = z.object({ ok: z.boolean() });
 export const apiClient = {
   baseUrl: BASE_URL,
-  health: () => request<HealthResponse>('/health'),
+  health: () => request('/health', z.object({ status: z.string() })),
+  workspace: () => request('/api/workspace', workspaceSchema),
+  demo: () => request('/api/demo', okSchema, { method: 'POST' }),
+  upload: (files: File[]) => {
+    const body = new FormData();
+    files.forEach((file) => body.append('files', file));
+    return request('/api/upload', z.object({ imported: z.number(), warnings: z.array(z.string()) }),
+      { method: 'POST', body });
+  },
+  enrich: () => request('/api/enrich', z.object({ queued: z.number() }), { method: 'POST' }),
+  sso: (id: string) => request(`/api/services/${id}/sso`, okSchema, { method: 'POST' }),
+  retry: (id: string) => request(`/api/services/${id}/retry`, okSchema, { method: 'POST' }),
+  edit: (id: string, users: number | null, spend: number | null) =>
+    request(`/api/services/${id}`, okSchema, { method: 'PATCH', body: JSON.stringify({ users, spend }) }),
+  filter: (message: string) => request('/api/filter', filterSchema,
+    { method: 'POST', body: JSON.stringify({ message }) }),
 };

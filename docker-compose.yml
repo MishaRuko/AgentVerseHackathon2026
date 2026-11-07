@@ -1,44 +1,38 @@
-# Local development orchestration for AgentVerse Hackathon 2026.
-#
-# Status: the backend stack is not yet decided, so its service is a commented-out
-# placeholder. Until it exists, run the frontend directly instead:
-#
-#     cd frontend && npm run dev
-#
-# Once the real backend lands (with its own Dockerfile in ./backend), uncomment
-# the `backend` service and the frontend's build/depends_on blocks below.
-
 services:
-  # ---------------------------------------------------------------------------
-  # Frontend — Next.js app.
-  # During early work, prefer `npm run dev` locally. This service is here so the
-  # full stack can run together once the backend exists.
-  # ---------------------------------------------------------------------------
-  # frontend:
-  #   build:
-  #     context: ./frontend
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     # Server-side Next.js reaches the backend via the compose service name.
-  #     - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-  #   depends_on:
-  #     - backend
-
-  # ---------------------------------------------------------------------------
-  # Backend — Dockerized service (stack TBD). Placeholder.
-  # Expected to expose port 8000 and a GET /health endpoint.
-  # Replace with the real build context / image when it lands.
-  # ---------------------------------------------------------------------------
-  # backend:
-  #   build:
-  #     context: ./backend
-  #   ports:
-  #     - "8000:8000"
-
-  # Compose requires at least one active service. This no-op keeps the file valid
-  # until the real services above are uncommented. Remove it then.
-  placeholder:
-    image: hello-world
-    profiles:
-      - never
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_PATH: /app/data/byebye.db
+    volumes:
+      - workspace-data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    environment:
+      DATABASE_PATH: /app/data/byebye.db
+    volumes:
+      - workspace-data:/app/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  workspace-data:
