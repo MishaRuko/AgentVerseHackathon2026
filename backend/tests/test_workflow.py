@@ -1,10 +1,12 @@
 import io
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from dateutil.relativedelta import relativedelta
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
+from google.genai import types
 
 from app import agent, db, sso, worker
 from app.importer import parse_file
@@ -124,3 +126,65 @@ def test_missing_key_is_visible_failure_not_fake_pricing():
     assert db.get("a").status == "error"
     assert "GEMINI_API_KEY" in db.get("a").error
     assert not db.get("a").tiers
+
+
+def test_agent_uses_sso_tools_in_order(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-placeholder")
+    calls = iter(["count_active_users", "inspect_sso_logs", "count_active_users", "calculate_recommendation"])
+    used = []
+
+    def generate(**kwargs):
+        name = next(calls)
+        used.append(name)
+        return SimpleNamespace(candidates=[SimpleNamespace(content=types.Content(role="model",
+            parts=[types.Part.from_function_call(name=name, args={})]))],
+            function_calls=[SimpleNamespace(name=name)])
+
+    monkeypatch.setattr(agent, "client", lambda: SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
+    original = agent.recommend
+    monkeypatch.setattr(agent, "recommend", lambda service: original(service, use_llm=False))
+    service = Subscription(id="agent", name="App", tiers=[Tier(name="Team", monthly_price=5, per_user=True, description="")])
+    db.save(service)
+    agent.run_agent(service, "sso")
+    assert used == ["count_active_users", "inspect_sso_logs", "count_active_users", "calculate_recommendation"]
+    assert service.user_source == "SSO"
+    assert service.users is not None
+    assert service.suggested_tier == "Team"
+    assert db.get(service.id).suggested_tier == "Team"
+
+
+def test_edit_preserves_card_order_and_busy_jobs_reject_edits():
+    with TestClient(app) as client:
+        client.post("/api/demo")
+        services = client.get("/api/workspace").json()["services"]
+        ids = [service["id"] for service in services]
+        assert client.patch(f"/api/services/{ids[0]}", json={"users": 1}).status_code == 409
+        while worker.run_one():
+            pass
+        assert client.patch(f"/api/services/{ids[0]}", json={"users": 5}).status_code == 200
+        worker.run_one()
+        assert [s.id for s in db.all_services()] == ids
+
+
+def test_nan_and_fractional_users_are_rejected():
+    services, warnings = parse_file("test.csv", b"Service,Users,Spend\nBad,NaN,100\nFraction,1.5,100\nInfinity,2,inf")
+    assert services == []
+    assert len(warnings) == 3
+
+
+def test_clear_demo_keeps_real_uploads():
+    with TestClient(app) as client:
+        client.post("/api/demo")
+        client.post("/api/upload", files={"files": ("real.csv", b"Service,Users\nReal App,5")})
+        assert client.post("/api/demo/clear").status_code == 200
+        assert [s.name for s in db.all_services()] == ["Real App"]
+
+
+def test_spend_only_edit_keeps_sso_provenance():
+    service = Subscription(id="sso", name="App", users=5, user_source="SSO", demo=True,
+        tiers=[Tier(name="Team", monthly_price=10, description="")])
+    db.save(service)
+    with TestClient(app) as client:
+        assert client.patch("/api/services/sso", json={"spend": 100}).status_code == 200
+    worker.run_one()
+    assert db.get("sso").user_source == "SSO"

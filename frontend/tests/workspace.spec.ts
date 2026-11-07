@@ -1,0 +1,57 @@
+import { expect, test } from '@playwright/test';
+
+test('upload landing, demo analysis, filters, detail editing and mock SSO', async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Goodbye, wasted spend.' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Find my savings' })).toBeDisabled();
+  await page.screenshot({ path: 'test-results/welcome-desktop.png', fullPage: true });
+  await page.getByRole('button', { name: 'Explore a demo workspace' }).click();
+  await expect(page.locator('.subscription-card')).toHaveCount(8);
+  await expect(page.getByText('Workspace up to date')).toBeVisible({ timeout: 20000 });
+  await expect(page.locator('.savings-stat strong')).toHaveText('£2,820');
+  await page.screenshot({ path: 'test-results/workspace-desktop.png', fullPage: true });
+  await page.getByLabel('Search subscriptions').fill('ntion');
+  await expect(page.locator('.subscription-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'View Notion subscription' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('£530', { exact: false }).first()).toBeVisible();
+  await dialog.getByLabel('Active users').fill('5');
+  await dialog.getByRole('button', { name: 'Save & analyse' }).click();
+  await expect(dialog.getByText('£900', { exact: false }).first()).toBeVisible({ timeout: 15000 });
+  await page.screenshot({ path: 'test-results/detail-desktop.png' });
+  await dialog.getByLabel('Close subscription details').click();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await page.getByLabel('Filter by category').selectOption('Research');
+  await expect(page.locator('.subscription-card')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Get with SSO' }).click();
+  await expect(page.getByRole('button', { name: 'Get with SSO' })).toHaveCount(0, { timeout: 15000 });
+  await page.getByRole('button', { name: 'View JSTOR subscription' }).click();
+  await expect(dialog.locator('.source-tag').first()).toHaveText('SSO');
+  await dialog.getByLabel('Close subscription details').click();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await page.reload();
+  await expect(page.locator('.subscription-card')).toHaveCount(8);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: 'test-results/workspace-mobile.png', fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  await page.getByRole('button', { name: 'Add subscriptions' }).click();
+  await page.getByLabel('Upload subscription spreadsheets').setInputFiles({
+    name: 'new-services.csv', mimeType: 'text/csv', buffer: Buffer.from('Service,Users,Monthly spend\nLinear,5,100'),
+  });
+  await page.getByRole('button', { name: 'Find my savings' }).click();
+  await expect(page.locator('.subscription-card')).toHaveCount(9);
+  await page.getByRole('button', { name: 'View Linear subscription' }).click();
+  await expect(dialog.getByText('Add GEMINI_API_KEY', { exact: false })).toBeVisible({ timeout: 15000 });
+  await dialog.getByLabel('Close subscription details').click();
+  await page.getByRole('button', { name: 'Ask AI to filter' }).click();
+  await page.getByLabel('Natural language filter request').fill('Show design tools with savings');
+  await page.getByRole('button', { name: 'Apply filter' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'GEMINI_API_KEY' })).toBeVisible();
+  await page.getByLabel('Close AI filter').click();
+  await page.getByRole('button', { name: 'Remove demo data' }).click();
+  await expect(page.locator('.subscription-card')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'View Linear subscription' })).toBeVisible();
+  expect(browserErrors).toEqual([]);
+});

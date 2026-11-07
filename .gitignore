@@ -16,3 +16,5 @@ __pycache__/
 .pytest_cache/
 backend/data/
 *.pyc
+frontend/test-results/
+frontend/playwright-report/

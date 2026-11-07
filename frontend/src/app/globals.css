@@ -102,6 +102,7 @@ h1, h2, h3, p { margin: 0; }
 .page-heading > .button { align-self: center; }
 .demo-banner { display: flex; align-items: center; gap: 8px; background: #fff9df; border: 1px solid #eee3b6; border-radius: 6px; padding: 10px 13px; font-size: 10px; color: #827345; margin-bottom: 18px; }
 .demo-badge { margin-left: auto; font-size: 8px; letter-spacing: 1px; font-family: var(--font-geist-mono), monospace; white-space: nowrap; }
+.leave-demo { margin-left: auto; font-size: 9px; white-space: nowrap; }
 .stats-grid { display: grid; grid-template-columns: 1fr 1.1fr 1.2fr; gap: 16px; }
 .stat-card { min-height: 149px; border: 1px solid #dadbd0; background: white; border-radius: 9px; padding: 20px 22px; display: flex; flex-direction: column; position: relative; overflow: hidden; }
 .metric-label { font-family: var(--font-geist-mono), monospace; font-size: 9px; letter-spacing: .6px; color: #97978a; display: flex; align-items: center; justify-content: space-between; gap: 5px; }
@@ -116,7 +117,7 @@ h1, h2, h3, p { margin: 0; }
 .agent-icon { height: 35px; width: 35px; border: 1px solid #e0d6a3; border-radius: 8px; background: #fff3ba; display: grid; place-items: center; flex-shrink: 0; }
 .agent-strip strong { font-size: 11px; font-weight: 550; }
 .agent-strip p { font-size: 10px; color: #919181; margin-top: 4px; line-height: 1.6; }
-.agent-strip > .button { margin-left: auto; }
+.agent-strip > .button { margin-left: auto; background: var(--coral); border-color: #ad6854; }
 .list-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
 .list-heading h2 { font-size: 15px; font-weight: 550; letter-spacing: -.3px; display: flex; align-items: center; gap: 8px; }
 .count { font-size: 10px; font-weight: 400; border: 1px solid #deded2; border-radius: 5px; background: white; padding: 1px 5px; letter-spacing: 0; }

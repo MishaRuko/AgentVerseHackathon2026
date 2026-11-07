@@ -29,6 +29,7 @@ export const apiClient = {
   health: () => request('/health', z.object({ status: z.string() })),
   workspace: () => request('/api/workspace', workspaceSchema),
   demo: () => request('/api/demo', okSchema, { method: 'POST' }),
+  clearDemo: () => request('/api/demo/clear', okSchema, { method: 'POST' }),
   upload: (files: File[]) => {
     const body = new FormData();
     files.forEach((file) => body.append('files', file));
@@ -38,8 +39,8 @@ export const apiClient = {
   enrich: () => request('/api/enrich', z.object({ queued: z.number() }), { method: 'POST' }),
   sso: (id: string) => request(`/api/services/${id}/sso`, okSchema, { method: 'POST' }),
   retry: (id: string) => request(`/api/services/${id}/retry`, okSchema, { method: 'POST' }),
-  edit: (id: string, users: number | null, spend: number | null) =>
-    request(`/api/services/${id}`, okSchema, { method: 'PATCH', body: JSON.stringify({ users, spend }) }),
+  edit: (id: string, data: { users?: number | null; spend?: number | null }) =>
+    request(`/api/services/${id}`, okSchema, { method: 'PATCH', body: JSON.stringify(data) }),
   filter: (message: string) => request('/api/filter', filterSchema,
     { method: 'POST', body: JSON.stringify({ message }) }),
 };

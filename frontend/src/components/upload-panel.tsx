@@ -5,7 +5,7 @@ import { ArrowRight, FileSpreadsheet, UploadCloud, X, ShieldCheck, LoaderCircle 
 import { Brand } from './brand';
 
 export const UploadPanel = ({ onUpload, onDemo, busy, compact = false }: {
-  onUpload: (files: File[]) => Promise<void>; onDemo?: () => void; busy: boolean; compact?: boolean;
+  onUpload: (files: File[]) => Promise<boolean>; onDemo?: () => void; busy: boolean; compact?: boolean;
 }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -43,7 +43,7 @@ export const UploadPanel = ({ onUpload, onDemo, busy, compact = false }: {
       </div>
       {error && <p className="inline-error" role="alert">{error}</p>}
       <button className="button primary process-button" disabled={!files.length || busy}
-        onClick={async () => { await onUpload(files); setFiles([]); }}>
+        onClick={async () => { if (await onUpload(files)) setFiles([]); }}>
         {busy ? <><LoaderCircle size={16} className="spin" />Processing your files…</> : <>Find my savings<ArrowRight size={17} /></>}
       </button>
       <p className="privacy-note"><ShieldCheck size={13} />Your files stay in your workspace. No SSO credentials required.</p>

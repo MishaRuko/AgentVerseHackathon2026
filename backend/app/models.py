@@ -1,9 +1,10 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Tier(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     name: str
     min_users: int = Field(default=0, ge=0)
     max_users: int | None = Field(default=None, ge=0)
@@ -16,6 +17,7 @@ class Tier(BaseModel):
 
 
 class Subscription(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     id: str
     name: str
     users: int | None = Field(default=None, ge=0, le=10000000)
@@ -37,6 +39,7 @@ class Subscription(BaseModel):
 
 
 class EditSubscription(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     users: int | None = Field(default=None, ge=0, le=10000000)
     spend: float | None = Field(default=None, ge=0)
 

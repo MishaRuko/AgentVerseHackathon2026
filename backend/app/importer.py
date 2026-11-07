@@ -1,6 +1,7 @@
 import csv
 import io
 import re
+import zipfile
 from uuid import uuid4
 
 from openpyxl import load_workbook
@@ -33,8 +34,18 @@ def number(value):
 
 def parse_file(filename: str, data: bytes) -> tuple[list[Subscription], list[str]]:
     if filename.lower().endswith(".xlsx"):
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            if sum(entry.file_size for entry in archive.infolist()) > 50 * 1024 * 1024:
+                raise ValueError("Expanded spreadsheet exceeds 50 MB")
         workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-        sheets = [(sheet.title, list(sheet.iter_rows(values_only=True))) for sheet in workbook]
+        if len(workbook.sheetnames) > 20:
+            workbook.close()
+            raise ValueError("Upload at most 20 sheets per workbook")
+        if any((sheet.max_row or 0) > 10000 or (sheet.max_column or 0) > 100 for sheet in workbook):
+            workbook.close()
+            raise ValueError("Each sheet must have at most 10,000 rows and 100 columns")
+        sheets = [(sheet.title, list(sheet.iter_rows(max_row=min(sheet.max_row or 1, 10000),
+                  max_col=min(sheet.max_column or 1, 100), values_only=True))) for sheet in workbook]
         workbook.close()
     elif filename.lower().endswith(".csv"):
         text = data.decode("utf-8-sig")
@@ -42,7 +53,10 @@ def parse_file(filename: str, data: bytes) -> tuple[list[Subscription], list[str
             dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t")
         except csv.Error:
             dialect = csv.excel
-        sheets = [(filename, list(csv.reader(io.StringIO(text), dialect)))]
+        rows = list(csv.reader(io.StringIO(text), dialect))
+        if len(rows) > 10000 or any(len(row) > 100 for row in rows):
+            raise ValueError("Each file must have at most 10,000 rows and 100 columns")
+        sheets = [(filename, rows)]
     else:
         raise ValueError("Please upload a CSV or XLSX file")
     services, warnings = [], []

@@ -1,32 +1,27 @@
-# Backend (placeholder)
+# byebye.fyi API and worker
 
-The backend stack is **not yet decided**. This folder is a placeholder until the
-real Dockerized service lands — it may be authored on a collaborator's machine
-and dropped in here, or built out in this repo later.
+Python FastAPI + SQLite WAL + Google GenAI SDK. See the root `README.md` for setup,
+mock SSO semantics, input formats, tests and deployment boundaries.
 
-## Contract the frontend expects
+Run `uvicorn app.main:app --port 8000` and `python -m app.worker` from this folder.
+Both processes must use the same `DATABASE_PATH` and Gemini environment variables.
+Only one worker may run against a database. It recovers running jobs after restart.
+Open `/docs` for the generated OpenAPI schema.
 
-The frontend treats the backend as a black box behind an HTTP/JSON API. The
-current placeholder assumptions (update these when the real service exists):
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Unauthenticated liveness check |
+| `GET /api/workspace` | Services, pending job count and configuration flags |
+| `POST /api/upload` | Multipart `files`; parse, persist and enqueue research |
+| `POST /api/demo` | Seed labelled demo data into an empty workspace |
+| `POST /api/demo/clear` | Remove only demo fixtures; preserve uploaded subscriptions |
+| `PATCH /api/services/{id}` | Set users/spend and enqueue analysis |
+| `POST /api/services/{id}/sso` | Queue mock SSO retrieval and analysis |
+| `POST /api/services/{id}/retry` | Retry research/analysis using retained tiers |
+| `POST /api/enrich` | Batch missing-user retrieval and plan analysis |
+| `POST /api/filter` | Gemini maps `{message}` to structured UI filters |
 
-| Item | Value (placeholder) |
-|------|---------------------|
-| Protocol | HTTP/JSON (REST) |
-| Port | `8000` |
-| Health check | `GET /health` → `200 { "status": "ok" }` |
-| Auth | TBD |
-
-See `.kiro/steering/backend-integration.md` for the full contract and the steps
-to follow once the stack is chosen.
-
-## What goes here
-
-When the real backend arrives it must ship a `Dockerfile` so `docker compose up`
-from the repo root can build and run it alongside the frontend. Until then, the
-`backend` service in `docker-compose.yml` is a commented-out placeholder.
-
-## Language
-
-TypeScript is preferred for anything written in this repo, but the backend may be
-a different language (Python, Go, etc.) if that is a deliberate choice — it is
-decoupled, so the frontend does not care, as long as the HTTP contract holds.
+All `/api/` endpoints require `Authorization: Bearer <APP_TOKEN>` when configured.
+Busy services return 409 for edits/requeues. Jobs are persisted before the response,
+so closing the browser does not interrupt execution. Service-level errors appear
+on the card/detail view, not as invented research results.

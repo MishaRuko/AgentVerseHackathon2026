@@ -1,5 +1,8 @@
 import logging
 import time
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 from . import agent, db
 
@@ -18,11 +21,7 @@ def run_one() -> bool:
         try:
             service.status, service.error = "searching", None
             db.save(service)
-            if row["kind"] == "sso":
-                agent.retrieve_sso(service)
-            if not service.tiers:
-                agent.research(service)
-            agent.recommend(service)
+            agent.run_agent(service, row["kind"])
         except Exception as exc:
             logging.exception("Job %s failed", row["id"])
             service.status = "error"
@@ -34,10 +33,12 @@ def run_one() -> bool:
 
 
 def main():
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
     db.init()
     # One worker process per database. Recover interrupted work after container restart.
     with db.connect() as conn:
         conn.execute("UPDATE jobs SET status='queued' WHERE status='running'")
+    print("Worker ready", flush=True)
     while True:
         try:
             if not run_one():

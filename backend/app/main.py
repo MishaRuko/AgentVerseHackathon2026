@@ -29,6 +29,14 @@ app.add_middleware(CORSMiddleware,
     allow_methods=["GET", "POST", "PATCH"], allow_headers=["Content-Type", "Authorization"])
 
 
+@app.middleware("http")
+async def private_responses(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -83,6 +91,24 @@ def load_demo():
     return {"ok": True}
 
 
+@app.post("/api/demo/clear", dependencies=[Depends(auth)])
+def clear_demo():
+    """Remove only explicitly labelled fixtures, never uploaded subscriptions."""
+    with db.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        ids = [row["id"] for row in conn.execute(
+            "SELECT id FROM subscriptions WHERE json_extract(data, '$.demo')=1").fetchall()]
+        for service_id in ids:
+            if conn.execute("SELECT 1 FROM jobs WHERE service_id=? AND status='running'", (service_id,)).fetchone():
+                raise HTTPException(409, "Wait until demo analysis completes before leaving the demo")
+        for service_id in ids:
+            conn.execute("DELETE FROM jobs WHERE service_id=?", (service_id,))
+            conn.execute("DELETE FROM sso_logs WHERE service_id=?", (service_id,))
+            conn.execute("DELETE FROM sso_apps WHERE service_id=?", (service_id,))
+            conn.execute("DELETE FROM subscriptions WHERE id=?", (service_id,))
+    return {"ok": True}
+
+
 def find(service_id):
     service = db.get(service_id)
     if service is None:
@@ -92,13 +118,14 @@ def find(service_id):
 
 def queue(service, kind):
     with db.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         busy = conn.execute("SELECT 1 FROM jobs WHERE service_id=? AND status IN ('running','queued')", (service.id,)).fetchone()
-    if busy:
-        raise HTTPException(409, "This subscription is already being processed")
-    service.status = "queued"
-    service.error = None
-    db.save(service)
-    db.enqueue(service.id, kind)
+        if busy:
+            raise HTTPException(409, "This subscription is already being processed")
+        service.status = "queued"
+        service.error = None
+        conn.execute("UPDATE subscriptions SET data=? WHERE id=?", (service.model_dump_json(), service.id))
+        conn.execute("INSERT INTO jobs(service_id,kind) VALUES (?,?)", (service.id, kind))
 
 
 @app.post("/api/services/{service_id}/sso", dependencies=[Depends(auth)])

@@ -19,6 +19,7 @@ const EMPTY_FILTERS: Filters = { query: '', category: 'All', status: 'All', savi
 export const WorkspaceApp = () => {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [error, setError] = useState('');
+  const [connectionError, setConnectionError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -31,14 +32,14 @@ export const WorkspaceApp = () => {
   const [chatResult, setChatResult] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
   const refresh = useCallback(async () => {
-    const data = await apiClient.workspace(); setWorkspace(data); setError('');
+    const data = await apiClient.workspace(); setWorkspace(data); setConnectionError('');
   }, []);
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      try { const data = await apiClient.workspace(); if (alive) { setWorkspace(data); setError(''); } }
-      catch (err) { if (alive) setError(err instanceof Error ? err.message : 'Could not connect to workspace.'); }
+      try { const data = await apiClient.workspace(); if (alive) { setWorkspace(data); setConnectionError(''); } }
+      catch (err) { if (alive) setConnectionError(err instanceof Error ? err.message : 'Could not connect to workspace.'); }
       if (alive) timer = setTimeout(poll, 2500);
     };
     void poll();
@@ -47,12 +48,12 @@ export const WorkspaceApp = () => {
 
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true); setError('');
-    try { await action(); await refresh(); }
-    catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.'); }
+    try { await action(); await refresh(); return true; }
+    catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.'); return false; }
     finally { setBusy(false); }
   };
   const upload = async (files: File[]) => {
-    await run(async () => {
+    return run(async () => {
       const result = await apiClient.upload(files);
       setNotice(`Imported ${result.imported} subscriptions.${result.warnings.length ? ` ${result.warnings.join(' ')}` : ' Research is now queued.'}`);
       setUploadOpen(false);
@@ -83,7 +84,7 @@ export const WorkspaceApp = () => {
         <button className="icon-button" aria-label="Help" onClick={() => setHelpOpen(true)}><CircleHelp size={18} /></button>
         <button className="icon-button" aria-label="Settings" onClick={() => setSettingsOpen(true)}><Settings size={18} /></button>
         <span className="user-avatar" aria-label="Workspace user">M</span></div></header>
-    {error && <div className="notice error global-notice" role="alert">{error}<button className="text-link" onClick={() => setSettingsOpen(true)}>Settings<ArrowRight size={13} /></button></div>}
+    {(error || connectionError) && <div className="notice error global-notice" role="alert">{error || connectionError}<button className="text-link" onClick={() => setSettingsOpen(true)}>Settings<ArrowRight size={13} /></button><button className="icon-button" onClick={() => setError('')} aria-label="Dismiss error"><X size={14} /></button></div>}
     {notice && <div className="notice global-notice" role="status">{notice}<button className="icon-button" aria-label="Dismiss notice" onClick={() => setNotice('')}><X size={15} /></button></div>}
     {workspace === null ? <main className="loading-workspace"><LoaderCircle className="spin" size={24} /><p>{error ? 'Waiting for your workspace…' : 'Getting your workspace ready…'}</p><span>Make sure the API and worker are running.</span></main> : services.length === 0 ?
       <main className="welcome-main"><UploadPanel onUpload={upload} onDemo={() => void run(() => apiClient.demo())} busy={busy} /></main> :
@@ -96,7 +97,7 @@ export const WorkspaceApp = () => {
           <span className="sidebar-version">byebye.fyi <span>EARLY ACCESS</span></span></div></aside>
         <main className="dashboard"><div className="page-heading"><div><span className="eyebrow">YOUR STACK, RIGHT-SIZED</span><h1>Subscriptions<span className="title-dot">.</span></h1><p>A clearer view of what you use. A smarter way to spend.</p></div>
           <button className="button" onClick={() => setUploadOpen(true)}><FilePlus2 size={16} />Add subscriptions</button></div>
-          {services.some((service) => service.demo) && <div className="demo-banner"><Sparkles size={14} /><span>You’re exploring demo data. All prices are illustrative; SSO logs are synthetic.</span><span className="demo-badge">DEMO WORKSPACE</span></div>}
+          {services.some((service) => service.demo) && <div className="demo-banner"><Sparkles size={14} /><span>You’re exploring demo data. All prices are illustrative; SSO logs are synthetic.</span><button className="text-link leave-demo" disabled={busy || workspace.pending_jobs > 0} onClick={() => void run(() => apiClient.clearDemo())}>Remove demo data<ArrowRight size={12} /></button></div>}
           {!workspace.ai_configured && !services.every((service) => service.demo) && <div className="notice">Live research needs a Gemini API key. Add it to .env and restart the API and worker.</div>}
           <section className="stats-grid" aria-label="Subscription overview"><div className="stat-card"><span className="metric-label">SUBSCRIPTIONS TRACKED<LayoutGrid size={15} /></span><strong>{services.length.toString().padStart(2, '0')}</strong><span className="stat-caption">All your tools, one place</span></div>
             <div className="stat-card"><span className="metric-label">CURRENT MONTHLY SPEND<span>↗</span></span><strong className={currencies.length > 1 ? 'multi-currency' : ''}>{currencies.map((currency) => <span key={currency}>{money(services.filter((s) => s.currency === currency).reduce((sum, s) => sum + (s.spend ?? 0), 0), currency)}</span>)}</strong><span className="stat-caption">{services.filter((s) => s.spend !== null).length} of {services.length} subscriptions have spend data</span></div>
@@ -122,7 +123,12 @@ export const WorkspaceApp = () => {
           <div className="dashboard-footnote"><ShieldCheck size={13} />Recommendations, not automatic changes. You make the final call.</div>
         </main></div>}
     <footer className="app-footer"><span>Less waste. More possibility.</span><span>Made for a better-balanced stack.<span className="footer-spark">✳</span></span></footer>
-    {selected && <ServiceDetail key={`${selected.id}-${selected.users}-${selected.spend}`} service={selected} busy={busy} onClose={() => setSelectedId(null)} onSso={() => void run(() => apiClient.sso(selected.id))} onRetry={() => void run(() => apiClient.retry(selected.id))} onEdit={(users, spend) => run(() => apiClient.edit(selected.id, users, spend))} />}
+    {selected && <ServiceDetail key={`${selected.id}-${selected.users}-${selected.spend}`} service={selected} busy={busy} onClose={() => setSelectedId(null)} onSso={() => void run(() => apiClient.sso(selected.id))} onRetry={() => void run(() => apiClient.retry(selected.id))} onEdit={async (users, spend) => {
+      await run(() => apiClient.edit(selected.id, {
+        ...(users !== selected.users ? { users } : {}),
+        ...(spend !== selected.spend ? { spend } : {}),
+      }));
+    }} />}
     <Dialog.Root open={uploadOpen} onOpenChange={setUploadOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="dialog-content upload-dialog"><Dialog.Close className="icon-button dialog-close" aria-label="Close upload"><X size={18} /></Dialog.Close><Dialog.Title>Add to your stack</Dialog.Title><Dialog.Description className="muted">Upload a spreadsheet. We’ll take it from here.</Dialog.Description><UploadPanel compact onUpload={upload} busy={busy} /></Dialog.Content></Dialog.Portal></Dialog.Root>
     <Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="dialog-content settings-dialog"><Dialog.Close className="icon-button dialog-close" aria-label="Close settings"><X size={18} /></Dialog.Close><Dialog.Title>Workspace settings</Dialog.Title><Dialog.Description className="muted">One private workspace. Your subscription data.</Dialog.Description>
       <form className="settings-form" onSubmit={(event) => { event.preventDefault(); sessionStorage.setItem('workspace-token', token); setSettingsOpen(false); void run(refresh); }}><label>Workspace access token<input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Enter APP_TOKEN" autoComplete="off" /></label><p className="fine-print">Only needed if APP_TOKEN is set on your server. Stored in this browser tab’s session, never in a public environment variable.</p><button className="button primary"><Check size={15} />Connect workspace</button></form>

@@ -41,7 +41,7 @@ def init():
 
 def save(service: Subscription):
     with connect() as conn:
-        conn.execute("INSERT OR REPLACE INTO subscriptions VALUES (?, ?)",
+        conn.execute("INSERT INTO subscriptions VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
                      (service.id, service.model_dump_json()))
 
 
