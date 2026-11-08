@@ -19,9 +19,9 @@ export const UploadPanel = ({ onUpload, busy, compact = false }: {
     setFiles((current) => [...current, ...incoming].slice(0, 10));
   };
   return <section className={`upload-intro ${compact ? 'compact' : ''}`}>
-    {!compact && <><span className="eyebrow"><span className="little-dot" />THE SUBSCRIPTION CLEAN-UP CREW</span>
-      <Brand large /><h1>Goodbye, wasted spend.<br /><span>Hello, better subscriptions.</span></h1>
-      <p className="intro-copy">Your tools should work for you. Not the other way around.<br />Let’s find out what you actually need — and what you can let go.</p></>}
+    {!compact && <><Brand large />
+      <h1 className="landing-tagline">The subscription clean-up crew.</h1>
+      <p className="landing-motto">Say bye-bye to waste.</p></>}
     <div className="upload-box-wrap">
       <div className={`upload-box ${dragging ? 'dragging' : ''}`}
         onDragOver={(event) => { event.preventDefault(); setDragging(true); }}

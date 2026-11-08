@@ -79,6 +79,8 @@ export const WorkspaceApp = () => {
     });
   };
   const services = workspace?.services ?? [];
+  const isLanding = services.length === 0;
+  const showHeader = services.length > 0 || (workspace?.workspaces.length ?? 0) > 1;
   const selected = services.find((service) => service.id === selectedId);
   const currencies = [...new Set(services.map((service) => service.currency))];
   const categories = [...new Set(services.map((service) => service.category))].sort();
@@ -96,10 +98,10 @@ export const WorkspaceApp = () => {
   const savings = (currency: string) => services.filter((service) => service.currency === currency)
     .reduce((sum, service) => sum + (service.savings ?? 0), 0);
 
-  return <div className={`app-shell ${detailOpen && selected ? 'detail-open' : ''}`}>
-    <header className="app-header"><Link href="/" className="brand-link" aria-label="byebye.fyi home"><Brand /></Link>
+  return <div className={`app-shell ${isLanding ? 'landing-shell' : ''} ${detailOpen && selected ? 'detail-open' : ''}`}>
+    {showHeader && <header className="app-header"><Link href="/" className="brand-link" aria-label="byebye.fyi home"><Brand /></Link>
       {workspace && <WorkspaceMenu workspaces={workspace.workspaces} activeId={workspace.id} onChange={changeWorkspace} />}
-    </header>
+    </header>}
     {(error || connectionError) && <div className="notice error global-notice" role="alert">{error || connectionError}<button className="icon-button" onClick={() => setError('')} aria-label="Dismiss error"><X size={14} /></button></div>}
     {notice && <div className="notice global-notice" role="status">{notice}<button className="icon-button" aria-label="Dismiss notice" onClick={() => setNotice('')}><X size={15} /></button></div>}
     {workspace === null ? <main className="loading-workspace"><LoaderCircle className="spin" size={24} /><p>{error ? 'Waiting for your workspace…' : 'Getting your workspace ready…'}</p><span>Make sure the API and worker are running.</span></main> : services.length === 0 ?
@@ -135,7 +137,7 @@ export const WorkspaceApp = () => {
           <div className="subscription-grid">{filtered.map((service) => <SubscriptionCard key={service.id} service={service} onOpen={() => { setSelectedId(service.id); setDetailOpen(true); }} onSso={() => void run(() => apiClient.sso(service.id))} disabled={busy} />)}</div>
           {!filtered.length && <div className="empty-results"><Search size={27} /><h3>No subscriptions match just yet.</h3><p>Try a different search or clear your filters.</p><button className="button" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</button></div>}
         </main></div>}
-    <footer className="app-footer">Say bye-bye to waste</footer>
+    {!isLanding && <footer className="app-footer">Say bye-bye to waste</footer>}
     {selected && <ServiceDetail key={`${selected.id}-${selected.users}-${selected.spend}`} service={selected} open={detailOpen} busy={busy} onClose={() => setDetailOpen(false)} onSso={() => void run(() => apiClient.sso(selected.id))} onRetry={() => void run(() => apiClient.retry(selected.id))} onEdit={async (users, spend) => {
       await run(() => apiClient.edit(selected.id, {
         ...(users !== selected.users ? { users } : {}),
