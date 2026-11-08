@@ -1,12 +1,17 @@
 import io
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Event, Lock
+from pathlib import Path
+import statistics
 
 import pytest
 from dateutil.relativedelta import relativedelta
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from google.genai import types
+from google.genai import errors
 
 from app import agent, db, sso, worker
 from app.importer import parse_file
@@ -87,7 +92,7 @@ def test_mock_generator_is_idempotent_and_bounded():
     now = datetime.now(timezone.utc)
     sso.ensure_logs("mock")
     result = sso.active_users("mock", now)
-    assert 0 <= result["users"] <= 7000
+    assert 5 <= result["users"] <= 300
     sso.ensure_logs("mock")
     assert sso.active_users("mock", now) == result
 
@@ -145,7 +150,8 @@ def test_agent_uses_sso_tools_in_order(monkeypatch):
     monkeypatch.setattr(agent, "client", lambda: SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
     original = agent.recommend
     monkeypatch.setattr(agent, "recommend", lambda service: original(service, use_llm=False))
-    service = Subscription(id="agent", name="App", tiers=[Tier(name="Team", monthly_price=5, per_user=True, description="")])
+    service = Subscription(id="agent", name="App", metadata_researched_at="2026-11-08",
+        tiers=[Tier(name="Team", monthly_price=5, per_user=True, description="")])
     db.save(service)
     agent.run_agent(service, "sso")
     assert used == ["count_active_users", "inspect_sso_logs", "count_active_users", "calculate_recommendation"]
@@ -232,9 +238,142 @@ def test_price_fallback_retains_provenance_without_invented_sources(monkeypatch)
     assert all(t.estimated and not t.source_url for t in service.tiers)
     agent.recommend(service, use_llm=False)
     assert service.suggested_tier == "Team"
-    assert service.optimal_spend == 160
-    assert service.savings == 340
+    assert service.optimal_spend == 128
+    assert service.savings == 372
+    assert {r.billing_period for r in service.recommendations} == {"monthly", "annual"}
+    assert service.category == "News"
 
 
 def test_json_research_accepts_wrapped_model_output():
     assert agent.json_result('Here is the result: {"tiers":[]}\nSources below') == {"tiers": []}
+
+
+def test_each_billing_period_gets_its_own_best_plan():
+    service = Subscription(id="billing", name="App", users=12, spend=200, tiers=[
+        Tier(name="Team", monthly_price=10, per_user=True, billing_period="monthly", description=""),
+        Tier(name="Team", monthly_price=8, per_user=True, billing_period="annual", description=""),
+        Tier(name="Business", monthly_price=9, per_user=True, billing_period="monthly", description=""),
+    ])
+    agent.recommend(service, use_llm=False)
+    monthly, annual = service.recommendations
+    assert (monthly.tier_name, monthly.monthly_cost) == ("Business", 108)
+    assert (annual.tier_name, annual.monthly_cost, annual.annual_cost) == ("Team", 96, 1152)
+    assert service.suggested_billing_period == "annual"
+    assert service.savings == 104
+
+
+def test_annual_only_fit_does_not_invent_a_monthly_plan():
+    service = Subscription(id="annual", name="App", users=30, tiers=[
+        Tier(name="Small", monthly_price=10, max_users=10, billing_period="monthly", description=""),
+        Tier(name="Organisation", monthly_price=100, max_users=100, billing_period="annual", description=""),
+    ])
+    agent.recommend(service, use_llm=False)
+    assert len(service.recommendations) == 1
+    assert service.recommendations[0].billing_period == "annual"
+    assert not any(t.estimated for t in service.tiers)
+
+
+def test_worker_claims_different_subscriptions_in_parallel(monkeypatch):
+    barrier = Barrier(6)
+    lock = Lock()
+    seen = []
+
+    def process(service, intent):
+        with lock:
+            seen.append(service.id)
+        barrier.wait(timeout=10)
+        agent.recommend(service, use_llm=False)
+
+    monkeypatch.setattr(agent, "run_agent", process)
+    for index in range(6):
+        service = Subscription(id=f"parallel-{index}", name=f"App {index}", users=5)
+        db.save(service)
+        db.enqueue(service.id)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        assert all(pool.map(lambda _: worker.run_one(), range(6)))
+    assert len(set(seen)) == 6
+    assert all(s.status == "suggestion" for s in db.all_services())
+
+
+def test_same_subscription_is_not_processed_twice_at_once(monkeypatch):
+    started, release = Event(), Event()
+
+    def process(service, intent):
+        started.set()
+        assert release.wait(timeout=10)
+
+    monkeypatch.setattr(agent, "run_agent", process)
+    db.save(Subscription(id="same", name="App"))
+    db.enqueue("same", "research")
+    db.enqueue("same", "sso")
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        first = pool.submit(worker.run_one)
+        assert started.wait(timeout=10)
+        assert worker.run_one() is False
+        release.set()
+        assert first.result()
+    assert worker.run_one()
+
+
+def test_sso_population_distribution_and_upgrade():
+    counts = []
+    for index in range(100):
+        service = Subscription(id=f"distribution-{index}", name=f"Service {index}")
+        db.save(service)
+        sso.ensure_logs(service.id)
+        counts.append(sso.active_users(service.id)["users"])
+    assert max(counts) <= 300
+    assert 70 <= statistics.mean(counts) <= 90
+    assert 20 <= statistics.stdev(counts) <= 40
+    with db.connect() as conn:
+        conn.execute("UPDATE sso_apps SET generation=1 WHERE service_id='distribution-0'")
+        conn.execute("INSERT INTO sso_logs VALUES (?,?,?,1)",
+            ("distribution-0", 6549, datetime.now(timezone.utc).isoformat()))
+    sso.ensure_logs("distribution-0")
+    assert sso.active_users("distribution-0")["users"] == counts[0]
+
+
+def test_completed_bulk_analysis_requires_confirmation():
+    service = Subscription(id="complete", name="App", users=5, demo=True,
+        tiers=[Tier(name="Team", monthly_price=10, description="Monthly")])
+    agent.recommend(service, use_llm=False)
+    db.save(service)
+    with TestClient(app) as client:
+        response = client.post("/api/enrich").json()
+        assert response == {"queued": 0, "already_analysed": True}
+        assert client.post("/api/enrich", json={"force": True}).json()["queued"] == 1
+
+
+def test_expanded_csv_has_realistic_usage_and_a_mixed_outcome():
+    path = Path(__file__).resolve().parents[2] / "frontend/public/test-subscriptions.csv"
+    services, warnings = parse_file(path.name, path.read_bytes())
+    assert len(services) == 21 and not warnings
+    assert "Category" not in path.read_text().splitlines()[0]
+    for service in services:
+        db.save(service)
+        agent.apply_metadata(service, agent.local_metadata(service.name))
+        service.tiers = agent.estimated_plans(service)
+        if service.users is None:
+            agent.retrieve_sso(service)
+        agent.recommend(service, use_llm=False)
+    assert all(5 <= s.users <= 300 for s in services)
+    assert sum(s.status == "optimal" for s in services) >= 5
+    assert sum((s.savings or 0) > 0 for s in services) >= 5
+    assert sum(s.spend is None for s in services) == 3
+    assert all(len(s.recommendations) == 2 for s in services)
+
+
+def test_metadata_survives_pricing_timeout_without_activity_disclaimers(monkeypatch):
+    def generate(**kwargs):
+        if kwargs["config"].response_schema is not None:
+            return SimpleNamespace(text='{"category":"News","description":"Global reporting.","tags":["news"],"website":"https://www.economist.com"}')
+        raise errors.ServerError(504, {"error": {"message": "Deadline exceeded"}})
+
+    monkeypatch.setattr(agent, "generate", generate)
+    service = Subscription(id="metadata", name="The Economist", users=80, spend=1500)
+    agent.research(service)
+    assert service.category == "News"
+    assert service.description == "Global reporting."
+    assert service.metadata_researched_at
+    assert service.tiers and all(t.estimated for t in service.tiers)
+    assert not any("unavailable" in event or "Alternative" in event for event in service.events)

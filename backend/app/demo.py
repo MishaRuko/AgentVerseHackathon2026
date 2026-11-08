@@ -23,6 +23,8 @@ def seed(workspace_id: str = "default"):
                         description="Illustrative demo pricing per user/month; not a vendor quote."),
                    Tier(name="Business", monthly_price=pro, per_user=True,
                         description="Illustrative demo pricing per user/month; not a vendor quote."),
-                   Tier(name="Enterprise", description="Custom pricing. Contact sales.")])
+                   Tier(name="Business", monthly_price=round(pro * .8, 2), per_user=True,
+                        billing_period="annual", description="Annual team licence, paid yearly."),
+                   Tier(name="Enterprise", billing_period="annual", description="Custom pricing. Contact sales.")])
         db.save(service)
         db.enqueue(service.id)

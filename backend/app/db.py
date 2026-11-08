@@ -45,6 +45,9 @@ def init():
         if "workspace_id" not in columns:
             conn.execute("ALTER TABLE subscriptions ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default'")
         conn.execute("CREATE INDEX IF NOT EXISTS workspace_services ON subscriptions(workspace_id)")
+        sso_columns = {row["name"] for row in conn.execute("PRAGMA table_info(sso_apps)")}
+        if "generation" not in sso_columns:
+            conn.execute("ALTER TABLE sso_apps ADD COLUMN generation INTEGER NOT NULL DEFAULT 1")
 
 
 def save(service: Subscription):

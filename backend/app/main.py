@@ -173,7 +173,7 @@ def get_sso(service_id: str, workspace_id: str = Depends(scope)):
 
 @app.post("/api/services/{service_id}/retry", dependencies=[Depends(auth)])
 def retry(service_id: str, workspace_id: str = Depends(scope)):
-    queue(find(service_id, workspace_id), "research")
+    queue(find(service_id, workspace_id), "refresh")
     return {"ok": True}
 
 
@@ -191,17 +191,28 @@ def edit(service_id: str, data: EditSubscription, workspace_id: str = Depends(sc
     return {"ok": True}
 
 
+class EnrichRequest(BaseModel):
+    force: bool = False
+
+
 @app.post("/api/enrich", dependencies=[Depends(auth)])
-def enrich(workspace_id: str = Depends(scope)):
+def enrich(data: EnrichRequest = EnrichRequest(), workspace_id: str = Depends(scope)):
     queued = 0
-    for service in db.all_services(workspace_id):
+    services = db.all_services(workspace_id)
+    incomplete = [s for s in services if s.users is None or not s.tiers or not s.analysed_at or s.status == "error"]
+    if not incomplete and not data.force:
+        return {"queued": 0, "already_analysed": True}
+    for service in services if data.force else incomplete:
         try:
-            queue(service, "sso" if service.users is None else "research")
+            kind = "sso" if service.users is None or (data.force and service.user_source == "SSO") else "research"
+            if data.force:
+                kind = "refresh_sso" if kind == "sso" else "refresh"
+            queue(service, kind)
             queued += 1
         except HTTPException as exc:
             if exc.status_code != 409:
                 raise
-    return {"queued": queued}
+    return {"queued": queued, "already_analysed": False}
 
 
 class FilterRequest(BaseModel):
