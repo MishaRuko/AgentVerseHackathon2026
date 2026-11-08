@@ -25,7 +25,8 @@ test('upload landing, demo analysis, filters, detail editing and mock SSO', asyn
   await expect(page.locator('.subscription-card')).toHaveCount(8);
   await expect(page.getByRole('banner')).toBeVisible();
   await expect(page.getByText('Workspace up to date')).toBeVisible({ timeout: 20000 });
-  await expect(page.locator('.savings-stat strong')).toHaveText('£2,820');
+  await expect(page.locator('.savings-stat .metric-label')).toHaveText('POTENTIAL YEARLY SAVINGS');
+  await expect(page.locator('.savings-stat strong')).toHaveText('£33,840');
   await expect(page.locator('.subscription-card').filter({ hasText: 'Notion' })).toHaveClass(/has-savings/);
   await expect(page.locator('.subscription-card').filter({ hasText: 'Financial Times' })).toHaveClass(/has-suggestion/);
   await expect(page.locator('.sidebar')).toHaveCount(0);

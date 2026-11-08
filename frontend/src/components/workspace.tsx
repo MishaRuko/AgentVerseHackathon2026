@@ -118,7 +118,12 @@ export const WorkspaceApp = () => {
     filters.savings_only ? 'Savings available' : '',
   ].filter(Boolean);
   const savings = (currency: string) => services.filter((service) => service.currency === currency)
-    .reduce((sum, service) => sum + (service.savings ?? 0), 0);
+    .reduce((sum, service) => {
+      const recommendation = service.recommendations.find((item) => item.billing_period === service.suggested_billing_period);
+      const annualSavings = recommendation?.annual_savings ??
+        (recommendation && service.spend !== null ? Math.max(0, service.spend * 12 - recommendation.annual_cost) : (service.savings ?? 0) * 12);
+      return sum + annualSavings;
+    }, 0);
 
   return <div className={`app-shell ${isLanding ? 'landing-shell' : ''} ${detailOpen && selected ? 'detail-open' : ''}`}>
     {showHeader && <header className="app-header"><Link href="/" className="brand-link" aria-label="byebye.fyi home"><Brand /></Link>
@@ -134,7 +139,7 @@ export const WorkspaceApp = () => {
           {!workspace.ai_configured && !services.every((service) => service.demo) && <div className="notice">Live research needs a Gemini API key. Add it to .env and restart the API and worker.</div>}
           <section className="stats-grid" aria-label="Subscription overview"><div className="stat-card"><span className="metric-label">SUBSCRIPTIONS TRACKED<LayoutGrid size={15} /></span><strong>{services.length.toString().padStart(2, '0')}</strong></div>
             <div className="stat-card"><span className="metric-label">CURRENT MONTHLY SPEND<span>↗</span></span><strong className={currencies.length > 1 ? 'multi-currency' : ''}>{currencies.map((currency) => <span key={currency}>{money(services.filter((s) => s.currency === currency).reduce((sum, s) => sum + (s.spend ?? 0), 0), currency)}</span>)}</strong><span className="stat-caption">{services.filter((s) => s.spend !== null).length} of {services.length} subscriptions have spend data</span></div>
-            <div className="stat-card savings-stat"><span className="metric-label">POTENTIAL MONTHLY SAVINGS<ArrowDownRight size={16} /></span><strong className={currencies.length > 1 ? 'multi-currency' : ''}>{currencies.map((currency) => <span key={currency}>{money(savings(currency), currency)}</span>)}</strong><span className="stat-caption">{suggestions} opportunities to spend smarter</span><span className="stat-decoration" aria-hidden="true">↘</span></div></section>
+            <div className="stat-card savings-stat"><span className="metric-label">POTENTIAL YEARLY SAVINGS<ArrowDownRight size={16} /></span><strong className={currencies.length > 1 ? 'multi-currency' : ''}>{currencies.map((currency) => <span key={currency}>{money(savings(currency), currency)}</span>)}</strong><span className="stat-caption">{suggestions} opportunities to spend smarter</span><span className="stat-decoration" aria-hidden="true">↘</span></div></section>
           <section className="agent-strip"><div className={`agent-icon ${workspace.pending_jobs ? 'agent-running' : ''}`}><Sparkles size={18} /></div><div><strong>{workspace.pending_jobs ? `Your agent is on it. ${workspace.pending_jobs} tasks to go.` : missing ? 'Let’s fill in the missing pieces.' : 'Your stack is looking clearer.'}</strong>
             <p>{workspace.pending_jobs ? 'Research runs in the background. You can safely close this tab.' : missing ? `${missing} subscriptions need active user counts. Your SSO connector can help.` : 'Review the suggestions below.'}</p></div>
             <button className="button small" disabled={busy || workspace.pending_jobs > 0} onClick={() => void enrich()}><KeyRound size={14} />Fill gaps & analyse<ArrowRight size={14} /></button></section>
