@@ -1,0 +1,215 @@
+/* Pitch-deck styles for /presentation.
+   Screen: scrollable stack of 16:9 slides.
+   Print:  one slide per landscape page (Cmd/Ctrl+P -> Save as PDF). */
+
+.deck {
+  /* Match the logo's primary yellow (sampled from public/logo.png: #fddf6c),
+     scoped to the deck so the rest of the app keeps its own --yellow. */
+  --yellow: #fddf6c;
+  --yellow-deep: #fbd24a;
+  --slide-w: 1120px;
+  --pad: 64px;
+  background: #f4f4ee;
+  background-image: radial-gradient(#dcdcd1 0.7px, transparent 0.7px);
+  background-size: 24px 24px;
+  min-height: 100vh;
+  padding: 40px 24px 96px;
+  color: var(--ink);
+}
+
+.deck-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: var(--slide-w);
+  margin: 0 auto 26px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--ink);
+  border-radius: 10px;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.deck-toolbar .toolbar-title {
+  font-weight: 650;
+  letter-spacing: -0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.deck-toolbar .toolbar-spacer { margin-left: auto; }
+/* Primary button inside the deck uses the logo yellow. */
+.deck .button.primary { background: var(--yellow); }
+.deck .button.primary:hover:not(:disabled) { background: var(--yellow-deep); }
+
+.slides { max-width: var(--slide-w); margin: 0 auto; display: grid; gap: 34px; }
+
+.slide {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #fff;
+  border: 1px solid var(--ink);
+  border-radius: 16px;
+  box-shadow: 5px 5px 0 var(--ink);
+  padding: var(--pad);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.slide-index {
+  position: absolute;
+  top: 26px;
+  right: 30px;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+  color: #a8a89b;
+}
+.slide h2 {
+  font-size: 42px;
+  line-height: 1.08;
+  letter-spacing: -1.8px;
+  font-weight: 560;
+  max-width: 17ch;
+}
+.slide h2.h2-wide { max-width: none; white-space: nowrap; font-size: 38px; }
+.slide h2 .accent {
+  color: var(--ink);
+  /* Project yellow (#ffea82) as a highlighter behind dark text for legibility. */
+  background: linear-gradient(#ffea82, #ffea82) no-repeat;
+  background-size: 100% 0.62em;
+  background-position: 0 0.74em;
+  padding: 0 0.08em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+/* ---- Title slide ---- */
+.slide-title { justify-content: center; align-items: flex-start;
+  background: linear-gradient(135deg, #fff 58%, #fddf6c40); }
+.title-logo { display: flex; align-items: center; gap: 18px; }
+.title-logo-img { height: 120px; width: auto; max-width: 100%; }
+.slide-title h2.tagline { font-size: 42px; margin-top: 26px; letter-spacing: -1.8px;
+  line-height: 1.08; font-weight: 560; color: var(--ink); max-width: none; }
+.slide-title .sub { margin-top: 18px; font-size: 17px; color: #71726a; line-height: 1.7; }
+.title-badge { margin-top: 40px; display: inline-flex; align-items: center; gap: 9px;
+  border: 1px solid var(--ink); background: #fff; border-radius: 24px;
+  padding: 10px 17px; font-size: 15px; box-shadow: 2px 2px 0 var(--ink); }
+.title-badge b { font-weight: 620; }
+
+/* ---- problem cards (3-up, each with an illustration) ---- */
+.problem-cards { margin-top: 26px; margin-bottom: 8px; display: grid;
+  grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.problem-card { border: 1px solid var(--ink); border-radius: 14px; background: #fff;
+  box-shadow: 3px 3px 0 var(--ink); padding: 22px 24px; display: flex;
+  flex-direction: column; }
+.problem-card:nth-child(1) { background: #fffdf4; }
+.problem-card:nth-child(2) { background: #fbfbf5; }
+.problem-card:nth-child(3) { background: #fff7f3; }
+/* Illustration sits directly on the card (no inner white box). */
+.pc-art { height: 190px; display: grid; place-items: center; margin-bottom: 14px; }
+.pc-art svg { width: 100%; height: 100%; }
+.problem-card h3 { font-size: 20px; letter-spacing: -0.5px; font-weight: 600; text-align: center; }
+
+/* ---- step flow ---- */
+.steps-row { margin-top: auto; margin-bottom: 8px; display: grid;
+  grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.steps-row.tools-4 { grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 28px; }
+.step-card { position: relative; border: 1px solid var(--ink); border-radius: 14px; padding: 22px 24px;
+  background: #fff; display: flex; flex-direction: column; gap: 10px; }
+.tools-4 .step-card { box-shadow: 3px 3px 0 var(--ink); }
+.soon-pill { position: absolute; top: 14px; right: 14px; font-family: var(--font-geist-mono), monospace;
+  font-size: 9.5px; letter-spacing: 0.4px; text-transform: uppercase; color: #8a8b80;
+  background: #f1f1ea; border: 1px solid #d9d9cd; border-radius: 20px; padding: 3px 9px; }
+.step-card:nth-child(1) { background: #fffbe8; }
+.step-card:nth-child(2) { background: #fff3ee; }
+.step-card:nth-child(3) { background: #f0f7e6; }
+.step-card:nth-child(4) { background: #eef1fb; }
+.step-icon { width: 46px; height: 46px; border: 1px solid var(--ink); border-radius: 11px;
+  display: grid; place-items: center; background: var(--yellow); margin-bottom: 6px;
+  box-shadow: 2px 2px 0 var(--ink); }
+.step-card h3 { font-size: 20px; letter-spacing: -0.4px; font-weight: 600; }
+.step-card h3 code { font-family: var(--font-geist-mono), monospace; font-size: 16px;
+  font-weight: 600; letter-spacing: -0.2px; }
+.step-card p { font-size: 15.5px; color: #64655c; line-height: 1.55; }
+
+/* ---- value strip (merged solution slide) ---- */
+.value-strip { margin-top: 18px; display: flex; gap: 12px; }
+.value-strip span { flex: 1; display: inline-flex; align-items: center; gap: 9px;
+  border: 1px solid var(--line); border-radius: 9px; padding: 12px 16px; background: #fbfbf5;
+  font-size: 14.5px; color: #55564e; }
+.value-strip span svg { flex-shrink: 0; color: var(--ink); }
+.value-strip b { font-weight: 640; color: var(--ink); }
+
+/* ---- implementation vs judging criteria (2x2) ---- */
+.impl-grid { margin-top: 28px; display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 18px; flex: 1; align-content: start; }
+.impl-card { border: 1px solid var(--ink); border-radius: 14px; background: #fff;
+  box-shadow: 3px 3px 0 var(--ink); padding: 22px 24px; display: flex; flex-direction: column; }
+.impl-card:nth-child(1) { background: #f6f2ff; }
+.impl-card:nth-child(2) { background: #ecfbfb; }
+.impl-card:nth-child(3) { background: #fdf0f8; }
+.impl-card:nth-child(4) { background: #fffbe8; }
+.impl-card h3 { font-size: 20px; letter-spacing: -0.5px; font-weight: 600; }
+.impl-card p { margin-top: 11px; font-size: 15.5px; line-height: 1.55; color: #55564e; }
+
+/* ---- architecture flow (Under the hood) ---- */
+.flow { margin-top: 34px; display: flex; align-items: stretch; gap: 10px; }
+.flow-card { flex: 1; border: 1px solid var(--ink); border-radius: 14px; background: #fff;
+  box-shadow: 3px 3px 0 var(--ink); padding: 22px 24px; display: flex; flex-direction: column; }
+.flow-card:nth-child(1) { background: #fffdf4; }
+.flow-card:nth-child(3) { background: #fff7f3; }
+.flow-card:nth-child(5) { background: #f4f9ec; }
+.fc-icon { width: 46px; height: 46px; border: 1px solid var(--ink); border-radius: 11px;
+  display: grid; place-items: center; background: var(--yellow); margin-bottom: 16px;
+  box-shadow: 2px 2px 0 var(--ink); }
+.flow-card h3 { font-size: 20px; letter-spacing: -0.5px; font-weight: 600; }
+.flow-card p { margin-top: 11px; font-size: 15.5px; line-height: 1.55; color: #55564e; }
+.flow-arrow { display: grid; place-items: center; color: #b4b5a8; flex-shrink: 0; }
+
+/* ---- closing (light, so the logo reads like the main page) ---- */
+.slide-close { justify-content: center; align-items: center; text-align: center;
+  background: linear-gradient(135deg, #fff 55%, #fddf6c40); }
+.slide-close h2 { max-width: none; }
+.close-logo { height: 110px; width: auto; max-width: 100%; margin-bottom: 30px; }
+.value-strip.close-strip { margin-top: 34px; justify-content: center; }
+.value-strip.close-strip span { flex: 0 1 auto; }
+
+/* ---- footer line on each slide ---- */
+.slide-foot { margin-top: auto; padding-top: 18px; display: flex; align-items: center;
+  justify-content: space-between; font-size: 11px; color: #9a9b90;
+  border-top: 1px solid var(--line); }
+.slide-foot .foot-brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 600;
+  font-size: 15px; color: #6a6b61; text-decoration: none; }
+.slide-foot a.foot-brand:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ================= PRINT (one 16:9 page per slide) ================= */
+@media print {
+  /* True 16:9 page: 13.333in x 7.5in (PowerPoint widescreen).
+     A page margin leaves a white gutter so the slide's ink border and
+     hard offset shadow are inset from the paper edge, not clipped. */
+  @page { size: 13.333in 7.5in; margin: 0.26in; }
+  html, body { background: #fff !important; margin: 0; padding: 0; }
+  .deck { background: #fff; padding: 0; margin: 0; min-height: 0; }
+  .deck-toolbar { display: none !important; }
+  .slides { max-width: none; gap: 0; margin: 0; display: block; }
+  .slide {
+    /* Fill the printable area, leaving room for the offset shadow. */
+    width: 12.76in;
+    height: 6.9in;
+    aspect-ratio: auto;
+    /* Keep the framed-card look in print: border + hard offset shadow. */
+    border: 1px solid var(--ink);
+    border-radius: 14px;
+    box-shadow: 5px 5px 0 var(--ink);
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    overflow: hidden;
+    padding: 0.5in 0.66in;
+  }
+  .slide:last-child { break-after: auto; page-break-after: auto; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
