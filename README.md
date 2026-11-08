@@ -26,7 +26,56 @@ docker compose up -d --force-recreate backend worker
 The API, worker and Next.js frontend are separate containers. A named volume
 persists SQLite subscription data, queued jobs, and synthetic SSO logs. Browser
 requests use a same-origin proxy; the Gemini key never goes to the browser.
-Docker publishes ports 3000 and 8000 on loopback only. No deployment has been made.
+Docker publishes ports 3000 and 8000 on loopback only by default; `FRONTEND_PORT`
+and `BACKEND_PORT` override the host bindings without changing container ports.
+
+## Server deployment
+
+The public demo is **https://byebye.fyi**, running from
+`/home/misharuko/AgentVerseHackathon2026` on `misha-server`. Its loopback ports are
+3100 (frontend) and 8100 (API), leaving the server's existing port-3000 app alone.
+The server has its own mode-600 `.env`, with the Gemini key and a separate random
+`APP_TOKEN`. Nginx injects the backend bearer token upstream; it is never shipped
+to the browser. Public demo visitors share the workspace API by design.
+
+For subsequent application updates:
+
+```bash
+ssh misha-server
+cd ~/AgentVerseHackathon2026
+git pull --ff-only
+docker compose up -d --build
+docker compose ps
+```
+
+Nginx/HTTPS setup is in `infra/install-nginx.sh` and
+`infra/nginx/byebye.fyi.conf`. It creates only the byebye site and snippet, validates
+nginx before reloading, and issues a dedicated Let's Encrypt certificate with an
+automatic renewal reload hook. It does not edit other sites or their certificates.
+The existing origin certificate is referenced read-only during ACME bootstrap.
+The public site rate-limits research/upload/filter requests; workspace polling is
+unlimited. Keep a provider billing quota, since public access is not a spending cap.
+
+To reapply site configuration, run interactively (sudo authentication required):
+
+```bash
+ssh -t misha-server 'sudo bash /home/misharuko/AgentVerseHackathon2026/infra/install-nginx.sh --public'
+```
+
+Omit `--public` to use HTTP password protection instead. Do not run
+`docker compose down -v` unless you intentionally want to delete persistent data.
+
+The opt-in public deployment smoke check creates its own workspace, exercises a
+real CSV upload, Gemini recommendations, SSO, billing tabs and compound AI filters,
+then deletes only that test workspace:
+
+```bash
+cd frontend
+npm run test:deployment
+```
+
+It consumes Gemini credits. Set `DEPLOYMENT_URL` to test a different deployment.
+Normal `test:e2e` runs never invoke this public-site check.
 
 ## Local development without Docker
 

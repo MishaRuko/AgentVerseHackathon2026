@@ -9,6 +9,7 @@ const env = { DATABASE_PATH: database, GEMINI_API_KEY: '', APP_TOKEN: '', BYEBYE
 
 export default defineConfig({
   testDir: './tests', fullyParallel: false, workers: 1, timeout: 60000,
+  testIgnore: '**/deployment.spec.ts',
   use: { baseURL: 'http://localhost:3001', viewport: { width: 1440, height: 1100 }, trace: 'retain-on-failure' },
   webServer: [
     { command: `${python} -m uvicorn app.main:app --port 8001`, cwd: '../backend',
