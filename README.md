@@ -1,216 +1,182 @@
+![byebye.fyi — the subscription clean-up crew](landing_page.png)
+
 # byebye.fyi
 
-A subscription right-sizing workspace: import a spreadsheet, research public plans,
-fill active-user gaps with a mock SSO connector, and review potential savings.
+**Say bye-bye to waste.**
 
-## Run with Docker
+Organisations pay for hundreds of subscriptions. But are they paying for what
+people actually use? **byebye.fyi** brings subscription spend, active usage and
+available plans into one workspace, helping universities and businesses find
+the right subscriptions at the right price.
+
+Upload your subscription list. Our AI agents do the digging. You keep the savings.
+
+**[Try byebye.fyi →](https://byebye.fyi)**
+
+## How it works
+
+### 1. Bring your subscriptions
+
+Drag in an Excel or CSV file containing your organisation's subscriptions.
+byebye.fyi extracts the services and any user counts or spending figures, then
+saves them in your workspace. A service name is all you need to get started.
+
+Create separate workspaces for different teams, departments or organisations,
+and switch between them from the header.
+
+### 2. Let the agents do the research
+
+Gemini-powered agents research each service's subscription tiers, prices, user
+limits and billing options. They also identify what each service does, assigning
+categories such as News, Research, Design and Productivity, alongside useful tags
+and descriptions.
+
+Subscriptions are analysed in parallel. Cards show their progress as results
+arrive, and background jobs keep running even after you close the browser.
+
+### 3. Fill in the gaps with SSO
+
+SSO activity reveals how many people actually use each service. byebye.fyi
+processes login logs and counts distinct users with a successful login in the
+**last three months**, rather than counting purchased seats or historical accounts.
+
+Use **Get with SSO** on an individual subscription, or **Fill gaps & analyse** to
+complete missing usage data across your workspace. You can also enter user counts
+and spending figures manually; each count shows its source.
+
+### 4. Find the right plan
+
+The analysis compares active users against plan capacities and costs, identifies
+the lowest-cost eligible tier, and explains the recommendation.
+
+- **Monthly and yearly options** receive separate comparisons, including the
+  upfront annual payment and monthly-equivalent cost.
+- **Potential savings** show how much less you could spend each month and year.
+- **Missing current spend** still produces a plan recommendation based on usage.
+- **No action needed** highlights subscriptions whose current spend already
+  beats or matches the available alternatives.
+
+Select a card to open its side panel and explore usage, plan details, pricing
+sources, recommendations and agent activity while keeping the rest of your
+subscriptions in view.
+
+### 5. Ask better questions about your stack
+
+Search by service name, filter by category and status, or narrow the results by
+user count, monthly spend, savings, currency and usage-data source.
+
+The AI filter turns questions like this into the corresponding filters:
+
+> Show news subscriptions with fewer than 100 users, costing over £500 a month,
+> where we could save at least £50.
+
+## Under the hood
+
+| Layer | Technology |
+| --- | --- |
+| Interface | Next.js, React, TypeScript, Tailwind CSS, Radix UI, Lucide |
+| API | Python, FastAPI, Pydantic |
+| AI | Gemini tool-calling agents and Google Search grounding |
+| Storage | SQLite with persistent subscription data, login logs and job queues |
+| Background processing | Concurrent Python workers, six subscription jobs at a time |
+| Deployment | Docker Compose, nginx, HTTPS |
+
+Agents use tools to research plans, inspect SSO logs, count active users and
+calculate recommendations. Capacity and pricing calculations determine the
+comparison figures, while Gemini provides the explanations and natural-language
+filtering. Subscription data reaches the interface through a typed HTTP API.
+
+## Run the project
+
+### With Docker
+
+Copy the environment template:
 
 ```bash
 cp .env.example .env
+```
+
+Set `GEMINI_API_KEY` in `.env`, then start the frontend, API and background worker:
+
+```bash
 docker compose up --build
 ```
 
-Open **http://localhost:3000**. Use the workspace menu beside the logo to create,
-switch or delete workspaces. Deletion requires confirmation and removes that
-workspace's subscriptions, jobs and SSO logs without affecting other workspaces.
-Deleting the last workspace leaves a fresh upload screen. Existing uploads are
-migrated into the original workspace automatically.
+Open **http://localhost:3000**.
 
-Set `GEMINI_API_KEY` in `.env` to enable research and natural-language filters,
-then recreate the API and worker:
+| Environment variable | Purpose | Default |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | Gemini API key | Set your key |
+| `GEMINI_MODEL` | Model used by the agents | `gemini-3.8-flash` |
+| `WORKER_CONCURRENCY` | Number of concurrent subscription jobs | `6` |
+| `FRONTEND_PORT` | Local frontend port | `3000` |
+| `BACKEND_PORT` | Local API port | `8000` |
 
-```bash
-docker compose up -d --force-recreate backend worker
-```
+Workspace data and background jobs persist in a Docker volume between restarts.
 
-The API, worker and Next.js frontend are separate containers. A named volume
-persists SQLite subscription data, queued jobs, and synthetic SSO logs. Browser
-requests use a same-origin proxy; the Gemini key never goes to the browser.
-Docker publishes ports 3000 and 8000 on loopback only by default; `FRONTEND_PORT`
-and `BACKEND_PORT` override the host bindings without changing container ports.
+### Without Docker
 
-## Server deployment
-
-The public demo is **https://byebye.fyi**, running from
-`/home/misharuko/AgentVerseHackathon2026` on `misha-server`. Its loopback ports are
-3100 (frontend) and 8100 (API), leaving the server's existing port-3000 app alone.
-The server has its own mode-600 `.env`, with the Gemini key and a separate random
-`APP_TOKEN`. Nginx injects the backend bearer token upstream; it is never shipped
-to the browser. Public demo visitors share the workspace API by design.
-
-For subsequent application updates:
+Use Python 3.12+ and Node.js 22+. From the repository root:
 
 ```bash
-ssh misha-server
-cd ~/AgentVerseHackathon2026
-git pull --ff-only
-docker compose up -d --build
-docker compose ps
-```
-
-Nginx/HTTPS setup is in `infra/install-nginx.sh` and
-`infra/nginx/byebye.fyi.conf`. It creates only the byebye site and snippet, validates
-nginx before reloading, and issues a dedicated Let's Encrypt certificate with an
-automatic renewal reload hook. It does not edit other sites or their certificates.
-The existing origin certificate is referenced read-only during ACME bootstrap.
-The public site rate-limits research/upload/filter requests; workspace polling is
-unlimited. Keep a provider billing quota, since public access is not a spending cap.
-
-To reapply site configuration, run interactively (sudo authentication required):
-
-```bash
-ssh -t misha-server 'sudo bash /home/misharuko/AgentVerseHackathon2026/infra/install-nginx.sh --public'
-```
-
-Omit `--public` to use HTTP password protection instead. Do not run
-`docker compose down -v` unless you intentionally want to delete persistent data.
-
-The opt-in public deployment smoke check creates its own workspace, exercises a
-real CSV upload, Gemini recommendations, SSO, billing tabs and compound AI filters,
-then deletes only that test workspace:
-
-```bash
-cd frontend
-npm run test:deployment
-```
-
-It consumes Gemini credits. Set `DEPLOYMENT_URL` to test a different deployment.
-Normal `test:e2e` runs never invoke this public-site check.
-
-## Local development without Docker
-
-Python 3.12+ and Node 22+ are recommended. From the repository root:
-
-```bash
+cp .env.example .env
 python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
+npm ci --prefix frontend
 ```
 
-Run these in three terminals:
+Set `GEMINI_API_KEY` in `.env`, then run these in three terminals:
 
 ```bash
+# API
 cd backend
 ../.venv/bin/python -m uvicorn app.main:app --reload --env-file ../.env
 ```
 
 ```bash
+# Background worker
 cd backend
 ../.venv/bin/python -m app.worker
 ```
 
 ```bash
+# Frontend
 cd frontend
-npm ci
 npm run dev
 ```
 
-The API and worker load the root `.env` with priority over stale exported values.
-Set `BYEBYE_LOAD_ENV=0` to use only process environment variables (used by tests).
-The default database is `backend/data/byebye.db`.
-Run exactly **one worker coordinator per database**. It runs six subscription jobs
-concurrently by default (`WORKER_CONCURRENCY`, 1–16). Database claims are atomic;
-two jobs for the same subscription never run together. Interrupted jobs are
-recovered on startup. Pricing lookup and metadata research also run concurrently.
+The app runs at **http://localhost:3000** and the API documentation is available
+at **http://localhost:8000/docs**.
 
-## Spreadsheet format
+## Upload format
 
-CSV (UTF-8; comma, semicolon or tab separated) and XLSX (multiple sheets) are supported.
-Only a subscription-name column is required. Common aliases are recognised, even
-after introductory rows; unrecognised sheets and invalid rows produce warnings.
-Arbitrary layouts are not guaranteed: rename headers using the sample below.
+Upload `.csv` or `.xlsx` files. Include a service-name column; user counts,
+monthly spend and currency are optional.
 
 ```csv
 Service,Users,Monthly spend,Currency
 Notion,35,1050,GBP
 Figma,,2400,GBP
 JSTOR,,200,GBP
+Scopus,95,,GBP
 ```
 
-See `frontend/public/sample-subscriptions.csv`. `Users` means active people, not
-purchased seats. Missing values stay unknown. Currency defaults to GBP; USD and
-EUR are supported without implicit conversion. Annual spend is normalised to
-monthly when `Period` is Annual/Yearly. Duplicate service names are skipped,
-not overwritten. Limits: 10 files, 10 MB/file, 500 imported services per batch,
-20 sheets/workbook, 50 MB expanded XLSX size. Rows/columns are bounded to
-10,000/100 per sheet.
+Categories and tags are collected during research. An optional `Period` column
+supports annual spending, which is normalised to a monthly amount for comparison.
+GBP, USD and EUR are supported, with comparisons kept within each currency.
 
-## Research and recommendations
+**[Download the 21-subscription example CSV](frontend/public/test-subscriptions.csv)**
 
-- A bounded Gemini tool-calling agent can research public pricing, inspect the
-  SSO index, count active users, and calculate a recommendation. Tool actions are
-  checkpointed and visible in a subscription's activity log.
-- Pricing research uses Gemini's Google Search grounding with vendor-source
-  links. Web evidence is untrusted; the model is instructed not to invent prices.
-  Extracted tiers are validated, but still need human verification.
-- Gemini separately classifies each service and adds a short description, tags,
-  and website. Category is not needed in the test CSV, and a pricing timeout does
-  not prevent metadata collection.
-- Monthly and annual commitments are separate offers, even with the same plan
-  name. Each billing period receives its own cheapest eligible recommendation.
-  Annual prices retain their monthly equivalent for comparison, while the detail
-  panel also shows the full upfront annual payment. Annual-only eligible plans do
-  not cause an invented monthly equivalent *contract* to be offered.
-- Deterministic capacity/price calculations constrain the final LLM explanation.
-  Per-seat plans respect minimum seat purchases. Quote-only prices stay unknown;
-  different currencies are never compared or summed together.
-- If search times out, finds no prices, returns only quotes, or has no priced tier
-  that covers the user count in the requested currency, the MVP uses a service/category
-  baseline and volume bands. These estimates retain `estimated=true` internally and
-  never receive invented source URLs. They are not vendor-verified prices.
-  Pricing transport diagnostics stay in backend logs, not the visible agent activity.
-- Without current spend, the recommended cost is shown without fabricated savings.
-  Missing users can be entered manually or retrieved via mock SSO.
-- Recommendations compare seats and public prices, **not feature equivalence**.
-  Check academic eligibility, required features, tax, commitments, and cancellation
-  costs before changing a contract. No subscriptions are changed automatically.
-- Live research, AI filtering and agent execution require a Gemini key.
-  `GEMINI_MODEL` defaults to `gemini-3.8-flash`; the previous 2.5 model is no longer
-  available to new accounts. Provider authentication errors remain errors rather
-  than being disguised as pricing-search failures.
-- The compact advanced-filter popover supports user/spend ranges, minimum monthly
-  savings, source of usage data and currency. The Gemini filter tool populates the
-  same fields, and numeric ranges exclude unknown values. Cross-currency filtering
-  never converts money implicitly.
-- Bulk gap filling skips completed subscriptions. If everything has already been
-  analysed, the UI asks for confirmation before submitting `force=true` for a full
-  fresh research run.
-
-## Mock SSO
-
-The connector efficiently generates six months of synthetic login events for a
-shared population of at most **300** numeric user identities, in batches of 5,000 rows.
-Active users per service are sampled from a normal distribution with mean **80**
-and standard deviation **30**, clamped to 5–300. The seed uses the service name,
-so reuploading the same services gives reproducible counts. Every sampled active
-identity gets a guaranteed recent successful event; a small dormant cohort has
-only older events. Old 7,000-population fixtures are regenerated when SSO is next
-retrieved; manually entered counts are never replaced automatically.
-Logs use `(service_id, user_id, logged_at, success)`; indexes support fast aggregate
-queries. Generation is idempotent per service. Active usage is the distinct count
-of successful logins in the last **three calendar months**, excluding future events.
-Only aggregate results are sent to Gemini; raw logs stay local. This is not a real
-SSO integration and synthetic counts should not inform actual purchases.
-
-## Security and deployment boundary
-
-This is a **multi-workspace prototype with no user accounts**, not a multi-tenant SaaS.
-Workspace separation is for organisation, not per-user access control. Before exposing
-it publicly, set a strong `APP_TOKEN`, configure HTTPS/nginx, request-body and rate
-limits, backups, and appropriate access controls. Configure bearer-token forwarding
-in an authenticated gateway/proxy before using a nonblank server token. There is no
-user sign-in or connection form in the UI. Do not put tokens or keys in
-`NEXT_PUBLIC_` variables. With a blank token, the local workspace is unauthenticated.
-Provider usage has a per-job tool-call limit, not an account-wide spending cap;
-configure billing alerts/quotas in Google Cloud before using real credits.
-
-## Checks
+## Tests
 
 ```bash
+# Backend
 cd backend
 ../.venv/bin/python -m pytest -q
 ```
 
 ```bash
+# Frontend and browser workflow
 cd frontend
 npm run lint
 npm run build
@@ -218,18 +184,9 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The browser test starts API, worker and frontend against a fresh temporary database;
-ports 3001 and 8001 must be free. Screenshots/traces are written to ignored
-`frontend/test-results/`. Python tests use isolated databases and no live AI calls.
-
-To verify the 21-subscription fixture against the actual configured provider,
-including SSO for seven missing counts, metadata, billing comparisons and a
-compound natural-language filter:
+To exercise the deployed upload, analysis, SSO and filtering workflow:
 
 ```bash
-.venv/bin/python backend/scripts/verify_csv.py
+cd frontend
+npm run test:deployment
 ```
-
-This consumes Gemini credits and uses an isolated temporary database, never the
-interactive workspace. `frontend/public/test-subscriptions.csv` is downloadable
-at `/test-subscriptions.csv`.
