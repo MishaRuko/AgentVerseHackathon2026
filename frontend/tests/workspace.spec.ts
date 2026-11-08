@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { workspaceSchema } from '../src/lib/schemas';
+import { money } from '../src/components/subscription-card';
 
 test('upload landing, demo analysis, filters, detail editing and mock SSO', async ({ page }) => {
   const browserErrors: string[] = [];
@@ -52,10 +54,20 @@ test('upload landing, demo analysis, filters, detail editing and mock SSO', asyn
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('button', { name: 'Save & analyse' })).toBeDisabled();
   await expect(dialog.getByText('£530', { exact: false }).first()).toBeVisible();
+  const state = workspaceSchema.parse(await (await page.request.get('/api/backend/api/workspace')).json());
+  const notion = state.services.find((service) => service.name === 'Notion')!;
+  const yearly = notion.recommendations.find((item) => item.billing_period === 'annual')!;
+  const monthly = notion.recommendations.find((item) => item.billing_period === 'monthly')!;
   await dialog.getByRole('tab', { name: 'Yearly', exact: true }).click();
   await expect(dialog.getByRole('heading', { name: 'Yearly plans' })).toBeVisible();
   await expect(dialog.locator('.recommendation')).toContainText('paid yearly');
+  await expect(dialog.locator('.recommendation-amount')).toHaveText(
+    `${money(yearly.annual_savings ?? Math.max(0, notion.spend! * 12 - yearly.annual_cost), notion.currency)} / year in potential savings`,
+  );
   await dialog.getByRole('tab', { name: 'Monthly', exact: true }).click();
+  await expect(dialog.locator('.recommendation-amount')).toHaveText(
+    `${money(monthly.monthly_savings, notion.currency)} / month in potential savings`,
+  );
   await dialog.getByLabel('Active users').fill('5');
   await dialog.getByRole('button', { name: 'Save & analyse' }).click();
   await expect(dialog.getByText('£900', { exact: false }).first()).toBeVisible({ timeout: 15000 });

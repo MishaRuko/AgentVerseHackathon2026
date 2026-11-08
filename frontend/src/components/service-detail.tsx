@@ -17,6 +17,10 @@ export const ServiceDetail = ({ service, open, onClose, onEdit, onSso, onRetry, 
   const periods = [...new Set(service.tiers.map((tier) => tier.billing_period))];
   const period = periods.includes(chosenPeriod) ? chosenPeriod : periods[0];
   const recommendation = service.recommendations.find((item) => item.billing_period === period);
+  const annualSavings = recommendation ? recommendation.annual_savings ??
+    (service.spend !== null ? Math.max(0, service.spend * 12 - recommendation.annual_cost) : null) : null;
+  const savings = period === 'annual' ? annualSavings : recommendation?.monthly_savings;
+  const planCost = (period === 'annual' ? recommendation?.annual_cost : recommendation?.monthly_cost) ?? null;
   const tiers = service.tiers.map((tier, index) => ({ ...tier, index }))
     .filter((tier) => tier.billing_period === period);
   const periodLabel = (value: string) => value === 'annual' ? 'Yearly' : value === 'monthly' ? 'Monthly' : 'Other billing';
@@ -48,12 +52,11 @@ export const ServiceDetail = ({ service, open, onClose, onEdit, onSso, onRetry, 
             document.getElementById(`billing-tab-${periods[index]}`)?.focus();
           }}>{periodLabel(value)}</button>)}
       </div> : periods.length === 1 && <p className="billing-label">{period === 'annual' ? 'Showing yearly plans · paid annually' : period === 'monthly' ? 'Showing monthly plans' : 'Billing commitment not specified'}</p>}
-      {recommendation && <div className={`recommendation ${recommendation.monthly_savings ? '' : 'neutral'}`}>
-        <div className="recommendation-label"><ArrowDownRight size={18} />{periodLabel(period)} · {recommendation.monthly_savings === 0 ? 'NO SAVINGS ON THIS BILLING OPTION' : recommendation.monthly_savings ? 'POTENTIAL SAVINGS' : 'YOUR RIGHT-SIZED PLAN'}</div>
-        <div className="recommendation-amount">{money(recommendation.monthly_savings || recommendation.monthly_cost, service.currency)}<span> / month{recommendation.monthly_savings ? ' in potential savings' : period === 'annual' ? ' equivalent cost' : ' plan cost'}</span></div>
+      {recommendation && <div className={`recommendation ${savings ? '' : 'neutral'}`}>
+        <div className="recommendation-label"><ArrowDownRight size={18} />{periodLabel(period)} · {savings === 0 ? 'NO SAVINGS ON THIS BILLING OPTION' : savings ? 'POTENTIAL SAVINGS' : 'YOUR RIGHT-SIZED PLAN'}</div>
+        <div className="recommendation-amount">{money(savings || planCost, service.currency)}<span> / {period === 'annual' ? 'year' : 'month'}{savings ? ' in potential savings' : ' plan cost'}</span></div>
         <p>{recommendation.tier_name} · {period === 'annual' ? `${money(recommendation.annual_cost, service.currency)} paid yearly` : period === 'monthly' ? `${money(recommendation.monthly_cost, service.currency)} paid monthly` : `${money(recommendation.monthly_cost, service.currency)}/month equivalent`}</p>
-        {Boolean(recommendation.monthly_savings) && <p>{money(recommendation.annual_savings ??
-          (service.spend !== null ? Math.max(0, service.spend * 12 - recommendation.annual_cost) : null), service.currency)} saved per year</p>}
+        {period !== 'annual' && Boolean(savings) && <p>{money(annualSavings, service.currency)} saved per year</p>}
       </div>}
       {period && !recommendation && service.users !== null && tiers.length > 0 && <p className="billing-label">No priced {periodLabel(period).toLowerCase()} option covers this user count.</p>}
       {service.recommendations.length > 1 && <div className="billing-comparisons">
