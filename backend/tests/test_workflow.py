@@ -16,6 +16,7 @@ from app.models import Subscription, Tier
 
 @pytest.fixture(autouse=True)
 def database(tmp_path, monkeypatch):
+    monkeypatch.setenv("BYEBYE_LOAD_ENV", "0")
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
     monkeypatch.delenv("APP_TOKEN", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
@@ -82,6 +83,7 @@ def test_sso_three_calendar_months_distinct_successful_only():
 
 
 def test_mock_generator_is_idempotent_and_bounded():
+    db.save(Subscription(id="mock", name="App"))
     now = datetime.now(timezone.utc)
     sso.ensure_logs("mock")
     result = sso.active_users("mock", now)
@@ -188,3 +190,51 @@ def test_spend_only_edit_keeps_sso_provenance():
         assert client.patch("/api/services/sso", json={"spend": 100}).status_code == 200
     worker.run_one()
     assert db.get("sso").user_source == "SSO"
+
+
+def test_workspaces_are_isolated_and_deletion_cannot_resurrect_data():
+    with TestClient(app) as client:
+        first = client.post("/api/workspaces", json={"name": "Research"}).json()
+        second = client.post("/api/workspaces", json={"name": "Teaching"}).json()
+        header = {"X-Workspace-ID": first["id"]}
+        fixture = {"files": ("test.csv", b"Service,Users\nNotion,5")}
+        assert client.post("/api/upload", files=fixture, headers=header).json()["imported"] == 1
+        service = client.get("/api/workspace", headers=header).json()["services"][0]
+        retained = db.get(service["id"])
+        other = {"X-Workspace-ID": second["id"]}
+        assert client.get("/api/workspace", headers=other).json()["services"] == []
+        assert client.post(f"/api/services/{service['id']}/sso", headers=other).status_code == 404
+        assert client.post("/api/upload", files=fixture, headers=other).json()["imported"] == 1
+        assert client.delete(f"/api/workspaces/{first['id']}").status_code == 200
+        db.save(retained)  # Simulate a tool finishing after deletion.
+        db.enqueue(retained.id)
+        sso.ensure_logs(retained.id)
+        assert db.get(retained.id) is None
+        with db.connect() as conn:
+            assert conn.execute("SELECT COUNT(*) FROM jobs WHERE service_id=?", (retained.id,)).fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM sso_logs WHERE service_id=?", (retained.id,)).fetchone()[0] == 0
+        assert len(client.get("/api/workspace", headers=other).json()["services"]) == 1
+
+
+def test_delete_last_workspace_leaves_fresh_upload_screen():
+    with TestClient(app) as client:
+        assert client.delete("/api/workspaces/default").status_code == 200
+        result = client.get("/api/workspace").json()
+        assert result["id"] != "default"
+        assert result["services"] == []
+        assert len(result["workspaces"]) == 1
+
+
+def test_price_fallback_retains_provenance_without_invented_sources(monkeypatch):
+    monkeypatch.setattr(agent, "generate", lambda **kwargs: SimpleNamespace(text='{"tiers":[]}'))
+    service = Subscription(id="fallback", name="Financial Times", users=5, spend=500, category="News")
+    agent.research(service)
+    assert all(t.estimated and not t.source_url for t in service.tiers)
+    agent.recommend(service, use_llm=False)
+    assert service.suggested_tier == "Team"
+    assert service.optimal_spend == 160
+    assert service.savings == 340
+
+
+def test_json_research_accepts_wrapped_model_output():
+    assert agent.json_result('Here is the result: {"tiers":[]}\nSources below') == {"tiers": []}

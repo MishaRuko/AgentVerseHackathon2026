@@ -1,4 +1,8 @@
 node_modules
+design
+.next-e2e
+test-results
+playwright-report
 .next
 .env*
 !.env.example

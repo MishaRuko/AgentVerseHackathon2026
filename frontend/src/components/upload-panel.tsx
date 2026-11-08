@@ -1,11 +1,11 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { ArrowRight, FileSpreadsheet, UploadCloud, X, ShieldCheck, LoaderCircle } from 'lucide-react';
+import { ArrowRight, FileSpreadsheet, UploadCloud, X, LoaderCircle } from 'lucide-react';
 import { Brand } from './brand';
 
-export const UploadPanel = ({ onUpload, onDemo, busy, compact = false }: {
-  onUpload: (files: File[]) => Promise<boolean>; onDemo?: () => void; busy: boolean; compact?: boolean;
+export const UploadPanel = ({ onUpload, busy, compact = false }: {
+  onUpload: (files: File[]) => Promise<boolean>; busy: boolean; compact?: boolean;
 }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -46,11 +46,7 @@ export const UploadPanel = ({ onUpload, onDemo, busy, compact = false }: {
         onClick={async () => { if (await onUpload(files)) setFiles([]); }}>
         {busy ? <><LoaderCircle size={16} className="spin" />Processing your files…</> : <>Find my savings<ArrowRight size={17} /></>}
       </button>
-      <p className="privacy-note"><ShieldCheck size={13} />Your files stay in your workspace. No SSO credentials required.</p>
     </div>
-    {!compact && <><div className="demo-prompt">Just looking around? <button className="text-link" onClick={onDemo} disabled={busy}>Explore a demo workspace <ArrowUpRightSmall /></button></div>
-      <div className="intro-steps"><span><b>01</b> Bring your subscriptions</span><span><b>02</b> We do the digging</span><span><b>03</b> You keep the savings</span></div></>}
+    {!compact && <div className="intro-steps"><span><b>01</b> Bring your subscriptions</span><span><b>02</b> We do the digging</span><span><b>03</b> You keep the savings</span></div>}
   </section>;
 };
-
-const ArrowUpRightSmall = () => <span aria-hidden="true">↗</span>;

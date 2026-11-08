@@ -12,6 +12,9 @@ Open `/docs` for the generated OpenAPI schema.
 | --- | --- |
 | `GET /health` | Unauthenticated liveness check |
 | `GET /api/workspace` | Services, pending job count and configuration flags |
+| `GET /api/workspaces` | List named workspaces |
+| `POST /api/workspaces` | Create an empty workspace using `{name}` |
+| `DELETE /api/workspaces/{id}` | Delete a workspace and its subscriptions, jobs and logs |
 | `POST /api/upload` | Multipart `files`; parse, persist and enqueue research |
 | `POST /api/demo` | Seed labelled demo data into an empty workspace |
 | `POST /api/demo/clear` | Remove only demo fixtures; preserve uploaded subscriptions |
@@ -22,6 +25,9 @@ Open `/docs` for the generated OpenAPI schema.
 | `POST /api/filter` | Gemini maps `{message}` to structured UI filters |
 
 All `/api/` endpoints require `Authorization: Bearer <APP_TOKEN>` when configured.
+Subscription endpoints use `X-Workspace-ID` to select the workspace (default: first
+available workspace). Foreign-workspace service IDs return 404. Deletion cannot
+be undone; in-flight worker saves cannot recreate a deleted workspace.
 Busy services return 409 for edits/requeues. Jobs are persisted before the response,
 so closing the browser does not interrupt execution. Service-level errors appear
 on the card/detail view, not as invented research results.

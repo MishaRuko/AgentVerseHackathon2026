@@ -10,6 +10,9 @@ from . import db
 
 def ensure_logs(service_id: str, population: int = 7000):
     with db.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if not conn.execute("SELECT 1 FROM subscriptions WHERE id=?", (service_id,)).fetchone():
+            return
         if conn.execute("SELECT 1 FROM sso_apps WHERE service_id=?", (service_id,)).fetchone():
             return
         rng = random.Random(int(hashlib.sha256(service_id.encode()).hexdigest()[:12], 16))

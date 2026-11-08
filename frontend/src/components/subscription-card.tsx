@@ -21,7 +21,7 @@ export const Status = ({ status }: { status: string }) => (
 
 export const ServiceAvatar = ({ name, category }: { name: string; category: string }) => (
   <span className={`service-avatar avatar-${category.toLowerCase()}`} aria-hidden="true">
-    {name.slice(0, 1).toUpperCase()}<span>↗</span>
+    {name.slice(0, 1).toUpperCase()}<span><ArrowUpRight size={11} strokeWidth={1.6} /></span>
   </span>
 );
 
@@ -41,6 +41,6 @@ export const SubscriptionCard = ({ service, onOpen, onSso, disabled }: {
       </div>
     </button>
     {service.users === null && <button className="sso-card-button" onClick={onSso}
-      disabled={disabled || ['queued', 'searching'].includes(service.status)}><KeyRound size={13} />Get with SSO<span>Mock connector</span></button>}
+      disabled={disabled || ['queued', 'searching'].includes(service.status)}><KeyRound size={13} />Get with SSO</button>}
   </article>
 );

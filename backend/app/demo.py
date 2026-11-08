@@ -15,9 +15,9 @@ DEMO = [
 ]
 
 
-def seed():
+def seed(workspace_id: str = "default"):
     for name, category, users, spend, basic, pro in DEMO:
-        service = Subscription(id=uuid4().hex, name=name, category=category, users=users,
+        service = Subscription(id=uuid4().hex, name=name, category=category, users=users, workspace_id=workspace_id,
             user_source="Manual" if users is not None else None, spend=spend, demo=True,
             tiers=[Tier(name="Team", monthly_price=basic, per_user=True,
                         description="Illustrative demo pricing per user/month; not a vendor quote."),

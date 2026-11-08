@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -33,7 +34,8 @@ def run_one() -> bool:
 
 
 def main():
-    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+    if os.getenv("BYEBYE_LOAD_ENV", "1") != "0":
+        load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
     db.init()
     # One worker process per database. Recover interrupted work after container restart.
     with db.connect() as conn:

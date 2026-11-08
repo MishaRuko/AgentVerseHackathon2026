@@ -5,16 +5,17 @@ import { tmpdir } from 'node:os';
 
 const database = join(mkdtempSync(join(tmpdir(), 'byebye-e2e-')), 'workspace.db');
 const python = process.env.TEST_PYTHON ?? '../.venv/bin/python';
-const env = { DATABASE_PATH: database, GEMINI_API_KEY: '', APP_TOKEN: '' };
+const env = { DATABASE_PATH: database, GEMINI_API_KEY: '', APP_TOKEN: '', BYEBYE_LOAD_ENV: '0' };
 
 export default defineConfig({
   testDir: './tests', fullyParallel: false, workers: 1, timeout: 60000,
-  use: { baseURL: 'http://localhost:3000', viewport: { width: 1440, height: 1100 }, trace: 'retain-on-failure' },
+  use: { baseURL: 'http://localhost:3001', viewport: { width: 1440, height: 1100 }, trace: 'retain-on-failure' },
   webServer: [
-    { command: `${python} -m uvicorn app.main:app --port 8000`, cwd: '../backend',
-      env, url: 'http://localhost:8000/health', reuseExistingServer: false },
+    { command: `${python} -m uvicorn app.main:app --port 8001`, cwd: '../backend',
+      env, url: 'http://localhost:8001/health', reuseExistingServer: false },
     { command: `${python} -m app.worker`, cwd: '../backend', env, timeout: 10000,
       wait: { stdout: /Worker ready/ }, reuseExistingServer: false },
-    { command: 'npm run dev', url: 'http://localhost:3000', reuseExistingServer: false },
+    { command: 'npm run dev -- --port 3001', url: 'http://localhost:3001',
+      env: { BACKEND_URL: 'http://localhost:8001', NEXT_DIST_DIR: '.next-e2e' }, reuseExistingServer: false },
   ],
 });

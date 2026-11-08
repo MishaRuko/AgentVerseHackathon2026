@@ -1,6 +1,8 @@
 import os
 import secrets
 from contextlib import asynccontextmanager
+from pathlib import Path
+from dotenv import load_dotenv
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +15,8 @@ from .models import EditSubscription
 
 @asynccontextmanager
 async def lifespan(app):
+    if os.getenv("BYEBYE_LOAD_ENV", "1") != "0":
+        load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
     db.init()
     yield
 
@@ -26,7 +30,37 @@ def auth(request: Request):
 app = FastAPI(title="byebye.fyi", lifespan=lifespan)
 app.add_middleware(CORSMiddleware,
     allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(","),
-    allow_methods=["GET", "POST", "PATCH"], allow_headers=["Content-Type", "Authorization"])
+    allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Content-Type", "Authorization", "X-Workspace-ID"])
+
+
+def scope(request: Request):
+    workspaces = db.workspaces()
+    workspace_id = request.headers.get("X-Workspace-ID", workspaces[0]["id"])
+    if not any(w["id"] == workspace_id for w in workspaces):
+        raise HTTPException(404, "Workspace not found")
+    return workspace_id
+
+
+class WorkspaceRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80, pattern=r".*\S.*")
+
+
+@app.get("/api/workspaces", dependencies=[Depends(auth)])
+def list_workspaces():
+    return db.workspaces()
+
+
+@app.post("/api/workspaces", dependencies=[Depends(auth)])
+def create_workspace(data: WorkspaceRequest):
+    return db.create_workspace(data.name)
+
+
+@app.delete("/api/workspaces/{workspace_id}", dependencies=[Depends(auth)])
+def delete_workspace(workspace_id: str):
+    if not any(w["id"] == workspace_id for w in db.workspaces()):
+        raise HTTPException(404, "Workspace not found")
+    db.delete_workspace(workspace_id)
+    return {"ok": True}
 
 
 @app.middleware("http")
@@ -43,15 +77,15 @@ def health():
 
 
 @app.get("/api/workspace", dependencies=[Depends(auth)])
-def workspace():
+def workspace(workspace_id: str = Depends(scope)):
     with db.connect() as conn:
-        pending = conn.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('running','queued')").fetchone()[0]
-    return {"services": db.all_services(), "pending_jobs": pending,
+        pending = conn.execute("SELECT COUNT(*) FROM jobs j JOIN subscriptions s ON j.service_id=s.id WHERE s.workspace_id=? AND j.status IN ('running','queued')", (workspace_id,)).fetchone()[0]
+    return {"id": workspace_id, "workspaces": db.workspaces(), "services": db.all_services(workspace_id), "pending_jobs": pending,
             "ai_configured": bool(os.getenv("GEMINI_API_KEY")), "sso_mode": "mock"}
 
 
 @app.post("/api/upload", dependencies=[Depends(auth)])
-async def upload(files: list[UploadFile] = File(...)):
+async def upload(files: list[UploadFile] = File(...), workspace_id: str = Depends(scope)):
     if len(files) > 10:
         raise HTTPException(400, "Upload at most 10 files at a time")
     services, warnings = [], []
@@ -70,13 +104,14 @@ async def upload(files: list[UploadFile] = File(...)):
     if len(services) > 500:
         raise HTTPException(400, "Upload at most 500 services per batch")
     # Skip identical vendor names rather than silently replacing existing workspace data.
-    existing = {s.name.casefold() for s in db.all_services()}
+    existing = {s.name.casefold() for s in db.all_services(workspace_id)}
     added = 0
     for service in services:
         if service.name.casefold() in existing:
             warnings.append(f"Skipped duplicate: {service.name}")
             continue
         existing.add(service.name.casefold())
+        service.workspace_id = workspace_id
         db.save(service)
         db.enqueue(service.id)
         added += 1
@@ -84,20 +119,20 @@ async def upload(files: list[UploadFile] = File(...)):
 
 
 @app.post("/api/demo", dependencies=[Depends(auth)])
-def load_demo():
-    if db.all_services():
+def load_demo(workspace_id: str = Depends(scope)):
+    if db.all_services(workspace_id):
         raise HTTPException(409, "Demo can only be loaded into an empty workspace")
-    demo.seed()
+    demo.seed(workspace_id)
     return {"ok": True}
 
 
 @app.post("/api/demo/clear", dependencies=[Depends(auth)])
-def clear_demo():
+def clear_demo(workspace_id: str = Depends(scope)):
     """Remove only explicitly labelled fixtures, never uploaded subscriptions."""
     with db.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
         ids = [row["id"] for row in conn.execute(
-            "SELECT id FROM subscriptions WHERE json_extract(data, '$.demo')=1").fetchall()]
+            "SELECT id FROM subscriptions WHERE workspace_id=? AND json_extract(data, '$.demo')=1", (workspace_id,)).fetchall()]
         for service_id in ids:
             if conn.execute("SELECT 1 FROM jobs WHERE service_id=? AND status='running'", (service_id,)).fetchone():
                 raise HTTPException(409, "Wait until demo analysis completes before leaving the demo")
@@ -109,9 +144,9 @@ def clear_demo():
     return {"ok": True}
 
 
-def find(service_id):
+def find(service_id, workspace_id):
     service = db.get(service_id)
-    if service is None:
+    if service is None or service.workspace_id != workspace_id:
         raise HTTPException(404, "Subscription not found")
     return service
 
@@ -119,6 +154,8 @@ def find(service_id):
 def queue(service, kind):
     with db.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        if not conn.execute("SELECT 1 FROM subscriptions WHERE id=?", (service.id,)).fetchone():
+            raise HTTPException(404, "Subscription no longer exists")
         busy = conn.execute("SELECT 1 FROM jobs WHERE service_id=? AND status IN ('running','queued')", (service.id,)).fetchone()
         if busy:
             raise HTTPException(409, "This subscription is already being processed")
@@ -129,20 +166,20 @@ def queue(service, kind):
 
 
 @app.post("/api/services/{service_id}/sso", dependencies=[Depends(auth)])
-def get_sso(service_id: str):
-    queue(find(service_id), "sso")
+def get_sso(service_id: str, workspace_id: str = Depends(scope)):
+    queue(find(service_id, workspace_id), "sso")
     return {"ok": True}
 
 
 @app.post("/api/services/{service_id}/retry", dependencies=[Depends(auth)])
-def retry(service_id: str):
-    queue(find(service_id), "research")
+def retry(service_id: str, workspace_id: str = Depends(scope)):
+    queue(find(service_id, workspace_id), "research")
     return {"ok": True}
 
 
 @app.patch("/api/services/{service_id}", dependencies=[Depends(auth)])
-def edit(service_id: str, data: EditSubscription):
-    service = find(service_id)
+def edit(service_id: str, data: EditSubscription, workspace_id: str = Depends(scope)):
+    service = find(service_id, workspace_id)
     with db.connect() as conn:
         if conn.execute("SELECT 1 FROM jobs WHERE service_id=? AND status IN ('running','queued')", (service_id,)).fetchone():
             raise HTTPException(409, "Wait until analysis completes before editing")
@@ -155,9 +192,9 @@ def edit(service_id: str, data: EditSubscription):
 
 
 @app.post("/api/enrich", dependencies=[Depends(auth)])
-def enrich():
+def enrich(workspace_id: str = Depends(scope)):
     queued = 0
-    for service in db.all_services():
+    for service in db.all_services(workspace_id):
         try:
             queue(service, "sso" if service.users is None else "research")
             queued += 1
@@ -172,8 +209,8 @@ class FilterRequest(BaseModel):
 
 
 @app.post("/api/filter", dependencies=[Depends(auth)])
-def filters(data: FilterRequest):
+def filters(data: FilterRequest, workspace_id: str = Depends(scope)):
     try:
-        return agent.natural_filter(data.message, sorted({s.category for s in db.all_services()}))
+        return agent.natural_filter(data.message, sorted({s.category for s in db.all_services(workspace_id)}))
     except Exception as exc:
         raise HTTPException(503, str(exc)[:400]) from exc

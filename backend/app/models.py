@@ -14,12 +14,14 @@ class Tier(BaseModel):
     currency: str = "GBP"
     description: str
     source_url: str = ""
+    estimated: bool = False
 
 
 class Subscription(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
     id: str
     name: str
+    workspace_id: str = "default"
     users: int | None = Field(default=None, ge=0, le=10000000)
     user_source: Literal["Manual", "SSO"] | None = None
     spend: float | None = Field(default=None, ge=0)

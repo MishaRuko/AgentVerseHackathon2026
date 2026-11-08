@@ -10,9 +10,14 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open **http://localhost:3000**. The empty workspace offers a labelled demo that
-works without an API key. To enable live research and natural-language filters,
-set `GEMINI_API_KEY` in `.env` and recreate the API and worker:
+Open **http://localhost:3000**. Use the workspace menu beside the logo to create,
+switch or delete workspaces. Deletion requires confirmation and removes that
+workspace's subscriptions, jobs and SSO logs without affecting other workspaces.
+Deleting the last workspace leaves a fresh upload screen. Existing uploads are
+migrated into the original workspace automatically.
+
+Set `GEMINI_API_KEY` in `.env` to enable research and natural-language filters,
+then recreate the API and worker:
 
 ```bash
 docker compose up -d --force-recreate backend worker
@@ -22,8 +27,6 @@ The API, worker and Next.js frontend are separate containers. A named volume
 persists SQLite subscription data, queued jobs, and synthetic SSO logs. Browser
 requests use a same-origin proxy; the Gemini key never goes to the browser.
 Docker publishes ports 3000 and 8000 on loopback only. No deployment has been made.
-Use **Remove demo data** to clear illustrative subscriptions without deleting
-any real uploads.
 
 ## Local development without Docker
 
@@ -52,7 +55,8 @@ npm ci
 npm run dev
 ```
 
-The worker loads the root `.env` without overriding exported values.
+The API and worker load the root `.env` with priority over stale exported values.
+Set `BYEBYE_LOAD_ENV=0` to use only process environment variables (used by tests).
 The default database is `backend/data/byebye.db`.
 Run exactly **one worker per database**. Interrupted jobs are recovered on startup.
 
@@ -89,14 +93,19 @@ not overwritten. Limits: 10 files, 10 MB/file, 500 imported services per batch,
 - Deterministic capacity/price calculations constrain the final LLM explanation.
   Per-seat plans respect minimum seat purchases. Quote-only prices stay unknown;
   different currencies are never compared or summed together.
+- If search times out, finds no prices, returns only quotes, or has no priced tier
+  that covers the user count in the requested currency, the MVP uses a service/category
+  baseline and volume bands. These estimates retain `estimated=true` internally and
+  never receive invented source URLs. They are not vendor-verified prices.
 - Without current spend, the recommended cost is shown without fabricated savings.
   Missing users can be entered manually or retrieved via mock SSO.
 - Recommendations compare seats and public prices, **not feature equivalence**.
   Check academic eligibility, required features, tax, commitments, and cancellation
   costs before changing a contract. No subscriptions are changed automatically.
-- Demo prices are illustrative and clearly labelled. Live research, AI filtering,
-  and live agent execution require a Gemini key and have not been tested against
-  the live provider without one. `GEMINI_MODEL` is configurable.
+- Live research, AI filtering and agent execution require a Gemini key.
+  `GEMINI_MODEL` defaults to `gemini-3.8-flash`; the previous 2.5 model is no longer
+  available to new accounts. Provider authentication errors remain errors rather
+  than being disguised as pricing-search failures.
 
 ## Mock SSO
 
@@ -110,11 +119,13 @@ SSO integration and synthetic counts should not inform actual purchases.
 
 ## Security and deployment boundary
 
-This is a **single-workspace prototype**, not a multi-tenant SaaS. Before exposing
+This is a **multi-workspace prototype with no user accounts**, not a multi-tenant SaaS.
+Workspace separation is for organisation, not per-user access control. Before exposing
 it publicly, set a strong `APP_TOKEN`, configure HTTPS/nginx, request-body and rate
-limits, backups, and appropriate access controls. Enter the token in the UI's
-Settings; it stays in the browser tab's session storage. Do not put tokens or keys
-in `NEXT_PUBLIC_` variables. With a blank token, the local workspace is unauthenticated.
+limits, backups, and appropriate access controls. Configure bearer-token forwarding
+in an authenticated gateway/proxy before using a nonblank server token. There is no
+user sign-in or connection form in the UI. Do not put tokens or keys in
+`NEXT_PUBLIC_` variables. With a blank token, the local workspace is unauthenticated.
 Provider usage has a per-job tool-call limit, not an account-wide spending cap;
 configure billing alerts/quotas in Google Cloud before using real credits.
 
@@ -134,5 +145,16 @@ npm run test:e2e
 ```
 
 The browser test starts API, worker and frontend against a fresh temporary database;
-ports 3000 and 8000 must be free. Screenshots/traces are written to ignored
+ports 3001 and 8001 must be free. Screenshots/traces are written to ignored
 `frontend/test-results/`. Python tests use isolated databases and no live AI calls.
+
+To verify the ten-subscription fixture against the actual configured provider,
+including SSO for the four missing counts and natural-language filtering:
+
+```bash
+.venv/bin/python backend/scripts/verify_csv.py
+```
+
+This consumes Gemini credits and uses an isolated temporary database, never the
+interactive workspace. `frontend/public/test-subscriptions.csv` is downloadable
+at `/test-subscriptions.csv`.

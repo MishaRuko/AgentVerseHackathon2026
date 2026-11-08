@@ -15,7 +15,9 @@ export const subscriptionSchema = z.object({
   researched_at: z.string().nullable(), sso_checked_at: z.string().nullable(),
   events: z.array(z.string()),
 });
+export const workspaceInfoSchema = z.object({ id: z.string(), name: z.string() });
 export const workspaceSchema = z.object({
+  id: z.string(), workspaces: z.array(workspaceInfoSchema),
   services: z.array(subscriptionSchema), pending_jobs: z.number(),
   ai_configured: z.boolean(), sso_mode: z.string(),
 });
