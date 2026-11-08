@@ -24,6 +24,18 @@ test('upload landing, demo analysis, filters, detail editing and mock SSO', asyn
   await expect(page.getByRole('banner')).toBeVisible();
   await expect(page.getByText('Workspace up to date')).toBeVisible({ timeout: 20000 });
   await expect(page.locator('.savings-stat strong')).toHaveText('£2,820');
+  await expect(page.locator('.subscription-card').filter({ hasText: 'Notion' })).toHaveClass(/has-savings/);
+  await expect(page.locator('.subscription-card').filter({ hasText: 'Financial Times' })).toHaveClass(/has-suggestion/);
+  await expect(page.locator('.sidebar')).toHaveCount(0);
+  await page.getByRole('button', { name: 'More filters' }).click();
+  await page.getByLabel('Minimum users', { exact: true }).fill('80');
+  await page.getByLabel('Maximum users', { exact: true }).fill('100');
+  await page.getByLabel('Minimum monthly spend', { exact: true }).fill('1000');
+  await page.getByLabel('Minimum monthly savings', { exact: true }).fill('1000');
+  await page.getByLabel('Close advanced filters').click();
+  await expect(page.locator('.subscription-card')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'View GitHub subscription' })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
   const iconTops = await page.locator('.subscription-card').evaluateAll((cards) => {
     const tops: Record<string, number> = {};
     cards.forEach((card) => {
@@ -40,6 +52,10 @@ test('upload landing, demo analysis, filters, detail editing and mock SSO', asyn
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('button', { name: 'Save & analyse' })).toBeDisabled();
   await expect(dialog.getByText('£530', { exact: false }).first()).toBeVisible();
+  await dialog.getByRole('tab', { name: 'Yearly', exact: true }).click();
+  await expect(dialog.getByRole('heading', { name: 'Yearly plans' })).toBeVisible();
+  await expect(dialog.locator('.recommendation')).toContainText('paid yearly');
+  await dialog.getByRole('tab', { name: 'Monthly', exact: true }).click();
   await dialog.getByLabel('Active users').fill('5');
   await dialog.getByRole('button', { name: 'Save & analyse' }).click();
   await expect(dialog.getByText('£900', { exact: false }).first()).toBeVisible({ timeout: 15000 });
@@ -49,7 +65,10 @@ test('upload landing, demo analysis, filters, detail editing and mock SSO', asyn
   await expect(dialog.getByRole('button', { name: 'Save & analyse' })).toBeDisabled();
   await page.getByRole('button', { name: 'View Notion subscription' }).click();
   await expect(dialog.getByRole('heading', { name: 'Notion', exact: true })).toBeVisible();
-  await page.screenshot({ path: 'test-results/detail-desktop.png' });
+  await page.evaluate(() => window.scrollTo(0, 350));
+  await expect.poll(() => dialog.evaluate((node) => Math.round(node.getBoundingClientRect().top))).toBe(0);
+  expect(await dialog.evaluate((node) => node.getBoundingClientRect().height)).toBe(1100);
+  await page.screenshot({ path: 'test-results/detail-desktop.png', animations: 'disabled' });
   await dialog.getByLabel('Close subscription details').click();
   await expect(dialog).toBeHidden();
   await page.getByLabel('Filter by category').selectOption('Research');
@@ -61,6 +80,12 @@ test('upload landing, demo analysis, filters, detail editing and mock SSO', asyn
   await dialog.getByLabel('Close subscription details').click();
   await expect(dialog).toBeHidden();
   await page.getByRole('button', { name: 'Clear filters' }).click();
+  await page.getByRole('button', { name: 'Fill gaps & analyse' }).click();
+  await expect(page.locator('.sso-card-button')).toHaveCount(0, { timeout: 15000 });
+  await expect(page.getByRole('button', { name: 'Fill gaps & analyse' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Fill gaps & analyse' }).click();
+  await expect(dialog.getByRole('heading', { name: 'Reanalyse everything?' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Keep current analysis' }).click();
   await page.reload();
   await expect(page.locator('.subscription-card')).toHaveCount(8);
   await page.setViewportSize({ width: 390, height: 844 });

@@ -37,7 +37,8 @@ on the card/detail view, not as invented research results.
 Tier `billing_period` is `monthly`, `annual`, or `unspecified`; `monthly_price` is
 always a monthly equivalent. Each service's `recommendations` has one best fit per
 eligible billing period, including `tier_index`, `monthly_cost`, `annual_cost`,
-and `monthly_savings`. Aggregate card savings use the best overall offer.
+`monthly_savings`, and `annual_savings`. Annual totals use unrounded prices, not
+rounded monthly display values. Aggregate card savings use the best overall offer.
 Metadata fields are `category`, `description`, `tags`, `website`, and
 `metadata_researched_at`; `analysed_at` records the last completed comparison.
 

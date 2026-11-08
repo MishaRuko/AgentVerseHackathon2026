@@ -14,8 +14,9 @@ import { UploadPanel } from './upload-panel';
 import { money, statusLabels, SubscriptionCard } from './subscription-card';
 import { ServiceDetail } from './service-detail';
 import { WorkspaceMenu } from './workspace-menu';
+import { AdvancedFilters } from './advanced-filters';
+import { advancedFilterCount, EMPTY_FILTERS, matchesFilters } from '@/lib/filters';
 
-const EMPTY_FILTERS: Filters = { query: '', category: 'All', status: 'All', savings_only: false };
 
 export const WorkspaceApp = () => {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -27,6 +28,7 @@ export const WorkspaceApp = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [reanalyseOpen, setReanalyseOpen] = useState(false);
   const [chat, setChat] = useState('');
   const [chatResult, setChatResult] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
@@ -59,7 +61,7 @@ export const WorkspaceApp = () => {
   const changeWorkspace = async (id: string) => {
     workspaceGeneration.current += 1;
     localStorage.setItem('workspace-id', id);
-    setSelectedId(null); setDetailOpen(false); setFilters(EMPTY_FILTERS);
+    setSelectedId(null); setDetailOpen(false); setFilters(EMPTY_FILTERS); setReanalyseOpen(false);
     setNotice(''); setError('');
     try { await refresh(); }
     catch (err) { setError(err instanceof Error ? err.message : 'Could not open workspace.'); }
@@ -90,11 +92,31 @@ export const WorkspaceApp = () => {
     const list = workspace?.services ?? [];
     const searched = filters.query ? new Fuse(list, { keys: ['name'], threshold: 0.38 })
       .search(filters.query).map(({ item }) => item) : list;
-    return searched.filter((service) => (filters.category === 'All' || service.category === filters.category)
-      && (filters.status === 'All' || service.status === filters.status)
-      && (!filters.savings_only || (service.savings ?? 0) > 0));
+    return searched.filter((service) => matchesFilters(service, filters));
   }, [workspace, filters]);
-  const activeFilters = filters.query || filters.category !== 'All' || filters.status !== 'All' || filters.savings_only;
+  const activeFilters = filters.query || filters.category !== 'All' || filters.status !== 'All'
+    || filters.savings_only || advancedFilterCount(filters) > 0;
+  const fullyAnalysed = services.length > 0 && services.every((service) =>
+    service.users !== null && service.tiers.length > 0 && service.analysed_at !== null
+    && ['suggestion', 'optimal'].includes(service.status));
+  const enrich = async (force = false) => {
+    if (fullyAnalysed && !force) { setReanalyseOpen(true); return; }
+    await run(async () => {
+      const result = await apiClient.enrich(force);
+      if (result.already_analysed) setReanalyseOpen(true);
+      else { setReanalyseOpen(false); setNotice(`${result.queued} subscriptions queued for analysis.`); }
+    });
+  };
+  const rangeSummary = [
+    filters.min_users !== null ? `Users ≥ ${filters.min_users}` : '',
+    filters.max_users !== null ? `Users ≤ ${filters.max_users}` : '',
+    filters.min_spend !== null ? `Spend ≥ ${filters.min_spend}/mo` : '',
+    filters.max_spend !== null ? `Spend ≤ ${filters.max_spend}/mo` : '',
+    filters.min_savings !== null ? `Savings ≥ ${filters.min_savings}/mo` : '',
+    filters.currency !== 'All' ? filters.currency : '',
+    filters.user_source !== 'All' ? `Users: ${filters.user_source}` : '',
+    filters.savings_only ? 'Savings available' : '',
+  ].filter(Boolean);
   const savings = (currency: string) => services.filter((service) => service.currency === currency)
     .reduce((sum, service) => sum + (service.savings ?? 0), 0);
 
@@ -106,12 +128,7 @@ export const WorkspaceApp = () => {
     {notice && <div className="notice global-notice" role="status">{notice}<button className="icon-button" aria-label="Dismiss notice" onClick={() => setNotice('')}><X size={15} /></button></div>}
     {workspace === null ? <main className="loading-workspace"><LoaderCircle className="spin" size={24} /><p>{error ? 'Waiting for your workspace…' : 'Getting your workspace ready…'}</p><span>Make sure the API and worker are running.</span></main> : services.length === 0 ?
       <main className="welcome-main"><UploadPanel onUpload={upload} busy={busy} /></main> :
-      <div className="workspace-body"><aside className="sidebar"><span className="nav-label">WORKSPACE</span>
-        <button className="nav-item active" onClick={() => setFilters(EMPTY_FILTERS)}><LayoutGrid size={16} />Subscriptions<span>{services.length}</span></button>
-        <button className={`nav-item ${filters.savings_only ? 'selected' : ''}`} onClick={() => setFilters({ ...EMPTY_FILTERS, savings_only: true })}><ArrowDownRight size={17} />Opportunities<span>{suggestions}</span></button>
-        <div className="sidebar-divider" /><span className="nav-label">CONNECTIONS</span>
-        <div className="nav-item"><KeyRound size={16} />SSO connector<span className="mock-dot" /></div>
-        <div className="sidebar-bottom"><span className="sidebar-version">byebye.fyi</span></div></aside>
+      <div className="workspace-body">
         <main className="dashboard"><div className="page-heading"><h1>Subscriptions<span className="title-dot">.</span></h1>
           <button className="button" onClick={() => setUploadOpen(true)}><FilePlus2 size={16} />Add subscriptions</button></div>
           {!workspace.ai_configured && !services.every((service) => service.demo) && <div className="notice">Live research needs a Gemini API key. Add it to .env and restart the API and worker.</div>}
@@ -120,19 +137,21 @@ export const WorkspaceApp = () => {
             <div className="stat-card savings-stat"><span className="metric-label">POTENTIAL MONTHLY SAVINGS<ArrowDownRight size={16} /></span><strong className={currencies.length > 1 ? 'multi-currency' : ''}>{currencies.map((currency) => <span key={currency}>{money(savings(currency), currency)}</span>)}</strong><span className="stat-caption">{suggestions} opportunities to spend smarter</span><span className="stat-decoration" aria-hidden="true">↘</span></div></section>
           <section className="agent-strip"><div className={`agent-icon ${workspace.pending_jobs ? 'agent-running' : ''}`}><Sparkles size={18} /></div><div><strong>{workspace.pending_jobs ? `Your agent is on it. ${workspace.pending_jobs} tasks to go.` : missing ? 'Let’s fill in the missing pieces.' : 'Your stack is looking clearer.'}</strong>
             <p>{workspace.pending_jobs ? 'Research runs in the background. You can safely close this tab.' : missing ? `${missing} subscriptions need active user counts. Your SSO connector can help.` : 'Review the suggestions below.'}</p></div>
-            <button className="button small" disabled={busy || workspace.pending_jobs > 0} onClick={() => void run(() => apiClient.enrich())}><KeyRound size={14} />Fill gaps & analyse<ArrowRight size={14} /></button></section>
+            <button className="button small" disabled={busy || workspace.pending_jobs > 0} onClick={() => void enrich()}><KeyRound size={14} />Fill gaps & analyse<ArrowRight size={14} /></button></section>
           <div className="list-heading"><h2>Your subscriptions <span className="count">{services.length}</span></h2><span className="subtle"><span className="little-dot green-dot" />{workspace.pending_jobs ? 'Analysis in progress' : 'Workspace up to date'}</span></div>
           <div className="filter-bar"><label className="search-input"><Search size={16} /><input placeholder="Find a subscription…" value={filters.query} onChange={(event) => setFilters({ ...filters, query: event.target.value })} aria-label="Search subscriptions" /><kbd>⌕</kbd></label>
             <label className="select-control"><SlidersHorizontal size={14} /><select aria-label="Filter by category" value={filters.category} onChange={(event) => setFilters({ ...filters, category: event.target.value })}><option value="All">All categories</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
             <label className="select-control"><span className="little-dot" /><select aria-label="Filter by status" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="All">All statuses</option>{Object.entries(statusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+            <AdvancedFilters filters={filters} onChange={setFilters} />
             <Popover.Root><Popover.Trigger className="button ai-filter"><Sparkles size={15} />Ask AI to filter</Popover.Trigger><Popover.Portal><Popover.Content className="chat-popover" sideOffset={10} align="end">
-              <div className="section-heading"><strong><Sparkles size={15} />A filter, in your words.</strong><Popover.Close className="icon-button" aria-label="Close AI filter"><X size={16} /></Popover.Close></div><p>Try “show design tools with potential savings”.</p>
+              <div className="section-heading"><strong><Sparkles size={15} />A filter, in your words.</strong><Popover.Close className="icon-button" aria-label="Close AI filter"><X size={16} /></Popover.Close></div><p>Try “news tools with under 100 users, spending over £500/month”.</p>
               <form onSubmit={async (event) => { event.preventDefault(); setChatBusy(true); setChatResult('');
                 try { setFilters(await apiClient.filter(chat)); setChatResult('Filters applied. Take a look at your subscriptions.'); }
                 catch (err) { setChatResult(err instanceof Error ? err.message : 'Filter failed.'); } finally { setChatBusy(false); }
               }}><textarea value={chat} onChange={(event) => setChat(event.target.value)} maxLength={2000} placeholder="What would you like to see?" aria-label="Natural language filter request" />
                 <button className="button primary" disabled={!chat.trim() || chatBusy}>{chatBusy ? <LoaderCircle size={14} className="spin" /> : <Sparkles size={14} />}Apply filter<ArrowRight size={14} /></button></form>
               {chatResult && <p role="status" className="chat-result">{chatResult}</p>}<Popover.Arrow className="popover-arrow" /></Popover.Content></Popover.Portal></Popover.Root></div>
+          {rangeSummary.length > 0 && <div className="filter-chips">{rangeSummary.map((summary) => <span key={summary}>{summary}</span>)}</div>}
           <div className="results-line"><span>Showing {filtered.length} of {services.length} subscriptions</span>{activeFilters && <button className="text-link" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters<X size={12} /></button>}<span className="results-hint">Select a card for the full picture<ArrowDownRight size={13} /></span></div>
           <div className="subscription-grid">{filtered.map((service) => <SubscriptionCard key={service.id} service={service} onOpen={() => { setSelectedId(service.id); setDetailOpen(true); }} onSso={() => void run(() => apiClient.sso(service.id))} disabled={busy} />)}</div>
           {!filtered.length && <div className="empty-results"><Search size={27} /><h3>No subscriptions match just yet.</h3><p>Try a different search or clear your filters.</p><button className="button" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</button></div>}
@@ -145,5 +164,14 @@ export const WorkspaceApp = () => {
       }));
     }} />}
     <Dialog.Root open={uploadOpen} onOpenChange={setUploadOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="dialog-content upload-dialog"><Dialog.Close className="icon-button dialog-close" aria-label="Close upload"><X size={18} /></Dialog.Close><Dialog.Title>Add to your stack</Dialog.Title><Dialog.Description className="muted">Upload a spreadsheet. We’ll take it from here.</Dialog.Description><UploadPanel compact onUpload={upload} busy={busy} /></Dialog.Content></Dialog.Portal></Dialog.Root>
+    <Dialog.Root open={reanalyseOpen} onOpenChange={setReanalyseOpen}><Dialog.Portal>
+      <Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="dialog-content settings-dialog">
+        <Dialog.Close className="icon-button dialog-close" aria-label="Close reanalysis confirmation"><X size={18} /></Dialog.Close>
+        <Dialog.Title>Reanalyse everything?</Dialog.Title>
+        <Dialog.Description className="muted">We’ve already analysed all your subscriptions and checked the gaps. Are you sure you want to research and compare every subscription again?</Dialog.Description>
+        <div className="confirmation-actions"><Dialog.Close className="button">Keep current analysis</Dialog.Close>
+          <button className="button primary" disabled={busy} onClick={() => void enrich(true)}><Sparkles size={15} />Reanalyse all</button></div>
+      </Dialog.Content>
+    </Dialog.Portal></Dialog.Root>
   </div>;
 };

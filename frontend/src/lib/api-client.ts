@@ -42,7 +42,9 @@ export const apiClient = {
     return request('/api/upload', z.object({ imported: z.number(), warnings: z.array(z.string()) }),
       { method: 'POST', body });
   },
-  enrich: () => request('/api/enrich', z.object({ queued: z.number() }), { method: 'POST' }),
+  enrich: (force = false) => request('/api/enrich',
+    z.object({ queued: z.number(), already_analysed: z.boolean() }),
+    { method: 'POST', body: JSON.stringify({ force }) }),
   sso: (id: string) => request(`/api/services/${id}/sso`, okSchema, { method: 'POST' }),
   retry: (id: string) => request(`/api/services/${id}/retry`, okSchema, { method: 'POST' }),
   edit: (id: string, data: { users?: number | null; spend?: number | null }) =>

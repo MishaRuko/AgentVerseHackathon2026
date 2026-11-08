@@ -273,6 +273,17 @@ def test_annual_only_fit_does_not_invent_a_monthly_plan():
     assert not any(t.estimated for t in service.tiers)
 
 
+def test_annual_upfront_cost_is_not_derived_from_rounded_monthly_amount():
+    service = Subscription(id="rounding", name="App", users=1, spend=10, tiers=[
+        Tier(name="Annual", monthly_price=100 / 12, billing_period="annual", description="")])
+    agent.recommend(service, use_llm=False)
+    result = service.recommendations[0]
+    assert result.monthly_cost == 8.33
+    assert result.annual_cost == 100
+    assert result.monthly_savings == 1.67
+    assert result.annual_savings == 20
+
+
 def test_worker_claims_different_subscriptions_in_parallel(monkeypatch):
     barrier = Barrier(6)
     lock = Lock()

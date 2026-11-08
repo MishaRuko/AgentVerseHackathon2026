@@ -58,7 +58,10 @@ npm run dev
 The API and worker load the root `.env` with priority over stale exported values.
 Set `BYEBYE_LOAD_ENV=0` to use only process environment variables (used by tests).
 The default database is `backend/data/byebye.db`.
-Run exactly **one worker per database**. Interrupted jobs are recovered on startup.
+Run exactly **one worker coordinator per database**. It runs six subscription jobs
+concurrently by default (`WORKER_CONCURRENCY`, 1–16). Database claims are atomic;
+two jobs for the same subscription never run together. Interrupted jobs are
+recovered on startup. Pricing lookup and metadata research also run concurrently.
 
 ## Spreadsheet format
 
@@ -68,10 +71,10 @@ after introductory rows; unrecognised sheets and invalid rows produce warnings.
 Arbitrary layouts are not guaranteed: rename headers using the sample below.
 
 ```csv
-Service,Users,Monthly spend,Currency,Category,Period
-Notion,42,950,GBP,Productivity,Monthly
-Figma,12,720,GBP,Design,Monthly
-JSTOR,,850,GBP,Research,Monthly
+Service,Users,Monthly spend,Currency
+Notion,35,1050,GBP
+Figma,,2400,GBP
+JSTOR,,200,GBP
 ```
 
 See `frontend/public/sample-subscriptions.csv`. `Users` means active people, not
@@ -90,6 +93,14 @@ not overwritten. Limits: 10 files, 10 MB/file, 500 imported services per batch,
 - Pricing research uses Gemini's Google Search grounding with vendor-source
   links. Web evidence is untrusted; the model is instructed not to invent prices.
   Extracted tiers are validated, but still need human verification.
+- Gemini separately classifies each service and adds a short description, tags,
+  and website. Category is not needed in the test CSV, and a pricing timeout does
+  not prevent metadata collection.
+- Monthly and annual commitments are separate offers, even with the same plan
+  name. Each billing period receives its own cheapest eligible recommendation.
+  Annual prices retain their monthly equivalent for comparison, while the detail
+  panel also shows the full upfront annual payment. Annual-only eligible plans do
+  not cause an invented monthly equivalent *contract* to be offered.
 - Deterministic capacity/price calculations constrain the final LLM explanation.
   Per-seat plans respect minimum seat purchases. Quote-only prices stay unknown;
   different currencies are never compared or summed together.
@@ -97,6 +108,7 @@ not overwritten. Limits: 10 files, 10 MB/file, 500 imported services per batch,
   that covers the user count in the requested currency, the MVP uses a service/category
   baseline and volume bands. These estimates retain `estimated=true` internally and
   never receive invented source URLs. They are not vendor-verified prices.
+  Pricing transport diagnostics stay in backend logs, not the visible agent activity.
 - Without current spend, the recommended cost is shown without fabricated savings.
   Missing users can be entered manually or retrieved via mock SSO.
 - Recommendations compare seats and public prices, **not feature equivalence**.
@@ -106,11 +118,24 @@ not overwritten. Limits: 10 files, 10 MB/file, 500 imported services per batch,
   `GEMINI_MODEL` defaults to `gemini-3.8-flash`; the previous 2.5 model is no longer
   available to new accounts. Provider authentication errors remain errors rather
   than being disguised as pricing-search failures.
+- The compact advanced-filter popover supports user/spend ranges, minimum monthly
+  savings, source of usage data and currency. The Gemini filter tool populates the
+  same fields, and numeric ranges exclude unknown values. Cross-currency filtering
+  never converts money implicitly.
+- Bulk gap filling skips completed subscriptions. If everything has already been
+  analysed, the UI asks for confirmation before submitting `force=true` for a full
+  fresh research run.
 
 ## Mock SSO
 
 The connector efficiently generates six months of synthetic login events for a
-shared population of up to 7,000 numeric user identities, in batches of 5,000 rows.
+shared population of at most **300** numeric user identities, in batches of 5,000 rows.
+Active users per service are sampled from a normal distribution with mean **80**
+and standard deviation **30**, clamped to 5–300. The seed uses the service name,
+so reuploading the same services gives reproducible counts. Every sampled active
+identity gets a guaranteed recent successful event; a small dormant cohort has
+only older events. Old 7,000-population fixtures are regenerated when SSO is next
+retrieved; manually entered counts are never replaced automatically.
 Logs use `(service_id, user_id, logged_at, success)`; indexes support fast aggregate
 queries. Generation is idempotent per service. Active usage is the distinct count
 of successful logins in the last **three calendar months**, excluding future events.
@@ -148,8 +173,9 @@ The browser test starts API, worker and frontend against a fresh temporary datab
 ports 3001 and 8001 must be free. Screenshots/traces are written to ignored
 `frontend/test-results/`. Python tests use isolated databases and no live AI calls.
 
-To verify the ten-subscription fixture against the actual configured provider,
-including SSO for the four missing counts and natural-language filtering:
+To verify the 21-subscription fixture against the actual configured provider,
+including SSO for seven missing counts, metadata, billing comparisons and a
+compound natural-language filter:
 
 ```bash
 .venv/bin/python backend/scripts/verify_csv.py

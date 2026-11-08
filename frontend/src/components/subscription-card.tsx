@@ -2,7 +2,8 @@ import { ArrowUpRight, Check, LoaderCircle, Users, KeyRound, CircleHelp } from '
 import type { Subscription } from '@/lib/schemas';
 
 export const money = (value: number | null, currency = 'GBP') => value === null ? '—' :
-  new Intl.NumberFormat('en-GB', { style: 'currency', currency, maximumFractionDigits: 0 }).format(value);
+  new Intl.NumberFormat('en-GB', { style: 'currency', currency,
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 }).format(value);
 
 export const statusLabels: Record<string, string> = {
   queued: 'In the queue', searching: 'Researching plans', suggestion: 'Suggestion ready',
@@ -28,11 +29,14 @@ export const ServiceAvatar = ({ name, category }: { name: string; category: stri
 export const SubscriptionCard = ({ service, onOpen, onSso, disabled }: {
   service: Subscription; onOpen: () => void; onSso: () => void; disabled: boolean;
 }) => (
-  <article className={`subscription-card ${service.savings ? 'has-savings' : ''}`}>
+  <article className={`subscription-card ${service.savings ? 'has-savings' : service.status === 'suggestion' ? 'has-suggestion' : ''}`}>
     <button className="card-main" onClick={onOpen} aria-label={`View ${service.name} subscription`}>
       <div className="card-heading"><ServiceAvatar name={service.name} category={service.category} />
         <ArrowUpRight className="card-arrow" size={19} /></div>
       <h3>{service.name}</h3><span className="category-label">{service.category}</span>
+      {['queued', 'searching'].includes(service.status) && <div className="card-progress" role="status">
+        <LoaderCircle size={25} className="spin" /><span>{service.status === 'queued' ? 'Ready to analyse' : 'Researching your subscription…'}</span>
+      </div>}
       <div className="card-metrics"><div><span className="metric-label">ACTIVE USERS</span>
         <strong><Users size={14} />{service.users?.toLocaleString() ?? 'Not available'}</strong></div>
         <div><span className="metric-label">MONTHLY SPEND</span><strong>{money(service.spend, service.currency)}</strong></div></div>

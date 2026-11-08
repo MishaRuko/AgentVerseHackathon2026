@@ -1,11 +1,22 @@
-Service,Users,Monthly spend,Currency,Category,Period
-Financial Times,,1500,GBP,News,Monthly
-The Economist,,900,GBP,News,Monthly
-Nature,75,1800,GBP,Research,Monthly
-JSTOR,,2400,GBP,Research,Monthly
-Scopus,210,,GBP,Research,Monthly
-Overleaf,120,1800,GBP,Research,Monthly
-Zoom,45,1350,GBP,Productivity,Monthly
-Notion,35,1050,GBP,Productivity,Monthly
-GitHub,85,,GBP,Development,Monthly
-Figma,,1200,GBP,Design,Monthly
+Service,Users,Monthly spend,Currency
+Financial Times,,4000,GBP
+The Economist,,600,GBP
+Nature,75,1800,GBP
+JSTOR,,200,GBP
+Scopus,95,,GBP
+Overleaf,120,1800,GBP
+Zoom,45,250,GBP
+Notion,35,1050,GBP
+GitHub,85,,GBP
+Figma,,2400,GBP
+Slack,100,400,GBP
+Miro,,1600,GBP
+Adobe Creative Cloud,65,1000,GBP
+Microsoft 365,110,1800,GBP
+Dropbox,40,200,GBP
+Asana,90,,GBP
+Trello,55,120,GBP
+Grammarly,,1200,GBP
+Canva,70,350,GBP
+Westlaw,,4500,GBP
+LexisNexis,60,400,GBP

@@ -36,6 +36,7 @@ class Recommendation(BaseModel):
     monthly_cost: float
     annual_cost: float
     monthly_savings: float | None = None
+    annual_savings: float | None = None
 
 
 class Metadata(BaseModel):

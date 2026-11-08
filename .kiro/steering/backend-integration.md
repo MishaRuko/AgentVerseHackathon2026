@@ -26,10 +26,18 @@ in `frontend/src/lib/schemas.ts` to validate every response.
 
 ## Background work
 
-One separate Python worker consumes a SQLite-backed job queue. API and worker share
-the named Docker volume. One worker per database; restart recovers interrupted work.
+One Python worker coordinator consumes a SQLite-backed job queue, with six concurrent
+jobs by default (`WORKER_CONCURRENCY`, capped at 16). Atomic claims prevent overlapping
+jobs for a single service. API and worker share the named Docker volume. One coordinator
+per database; restart recovers interrupted work.
 Raw SSO logs are synthetic and stay local. Gemini sees aggregate counts and
 subscription metadata only. Missing provider configuration is a visible service error.
+
+SSO uses a 300-identity population, with service-name-seeded active counts centred on
+80 (standard deviation 30). Billing periods are separate tier entries and separate
+recommendations. Annual offer prices are monthly-normalised internally, with full
+annual payments displayed in the UI. Metadata is researched independently of pricing.
+Completed bulk analysis requires an explicit `force=true` after UI confirmation.
 
 ## Containers
 

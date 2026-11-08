@@ -1,6 +1,6 @@
-Service,Users,Monthly spend,Currency,Category,Period
-Notion,42,950,GBP,Productivity,Monthly
-Figma,12,720,GBP,Design,Monthly
-GitHub,86,1806,GBP,Development,Monthly
-JSTOR,,850,GBP,Research,Monthly
-Financial Times,18,,GBP,News,Monthly
+Service,Users,Monthly spend,Currency
+Notion,35,1050,GBP
+Figma,,2400,GBP
+JSTOR,,200,GBP
+Scopus,95,,GBP
+The Economist,,600,GBP

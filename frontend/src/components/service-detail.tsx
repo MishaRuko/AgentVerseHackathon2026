@@ -13,6 +13,14 @@ export const ServiceDetail = ({ service, open, onClose, onEdit, onSso, onRetry, 
 }) => {
   const [users, setUsers] = useState(service.users?.toString() ?? '');
   const [spend, setSpend] = useState(service.spend?.toString() ?? '');
+  const [chosenPeriod, setChosenPeriod] = useState(service.suggested_billing_period ?? 'monthly');
+  const periods = [...new Set(service.tiers.map((tier) => tier.billing_period))];
+  const period = periods.includes(chosenPeriod) ? chosenPeriod : periods[0];
+  const recommendation = service.recommendations.find((item) => item.billing_period === period);
+  const tiers = service.tiers.map((tier, index) => ({ ...tier, index }))
+    .filter((tier) => tier.billing_period === period);
+  const periodLabel = (value: string) => value === 'annual' ? 'Yearly' : value === 'monthly' ? 'Monthly' : 'Other billing';
+  const events = service.events.filter((event) => !/Pricing search unavailable|Alternative pricing plans prepared/i.test(event));
   const working = busy || ['queued', 'searching'].includes(service.status);
   const dirty = (users === '' ? null : Number(users)) !== service.users
     || (spend === '' ? null : Number(spend)) !== service.spend;
@@ -25,11 +33,35 @@ export const ServiceDetail = ({ service, open, onClose, onEdit, onSso, onRetry, 
         <Dialog.Title>{service.name}</Dialog.Title></div></div>
       <Dialog.Description className="sr-only">Subscription details, usage and available plans.</Dialog.Description>
       <div className="detail-status"><Status status={service.status} /></div>
+      {service.description && <p className="service-description">{service.description}</p>}
+      {service.tags.length > 0 && <div className="metadata-tags">{service.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}
       {service.error && <div className="notice error" role="alert">{service.error}</div>}
-      {service.suggested_tier && <div className={`recommendation ${service.savings ? '' : 'neutral'}`}>
-        <div className="recommendation-label"><ArrowDownRight size={18} />{service.savings ? 'A LITTLE SWITCH. A BIG DIFFERENCE.' : 'YOUR RIGHT-SIZED PLAN'}</div>
-        <div className="recommendation-amount">{service.savings ? money(service.savings, service.currency) : money(service.optimal_spend, service.currency)}<span> / month{service.savings ? ' in potential savings' : ' estimated cost'}</span></div>
-        <p>{service.suggested_tier}{service.savings ? ` · ${money(service.savings * 12, service.currency)} saved per year` : ' · based on active users'}</p>
+      {periods.length > 1 ? <div className="billing-tabs" role="tablist" aria-label="Billing options">
+        {periods.map((value) => <button key={value} role="tab" aria-selected={period === value}
+          id={`billing-tab-${value}`} tabIndex={period === value ? 0 : -1}
+          aria-controls="billing-plans" onClick={() => setChosenPeriod(value)} onKeyDown={(event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const index = event.key === 'Home' ? 0 : event.key === 'End' ? periods.length - 1
+              : (periods.indexOf(value) + (event.key === 'ArrowRight' ? 1 : -1) + periods.length) % periods.length;
+            setChosenPeriod(periods[index]);
+            document.getElementById(`billing-tab-${periods[index]}`)?.focus();
+          }}>{periodLabel(value)}</button>)}
+      </div> : periods.length === 1 && <p className="billing-label">{period === 'annual' ? 'Showing yearly plans · paid annually' : period === 'monthly' ? 'Showing monthly plans' : 'Billing commitment not specified'}</p>}
+      {recommendation && <div className={`recommendation ${recommendation.monthly_savings ? '' : 'neutral'}`}>
+        <div className="recommendation-label"><ArrowDownRight size={18} />{periodLabel(period)} · {recommendation.monthly_savings === 0 ? 'NO SAVINGS ON THIS BILLING OPTION' : recommendation.monthly_savings ? 'POTENTIAL SAVINGS' : 'YOUR RIGHT-SIZED PLAN'}</div>
+        <div className="recommendation-amount">{money(recommendation.monthly_savings || recommendation.monthly_cost, service.currency)}<span> / month{recommendation.monthly_savings ? ' in potential savings' : period === 'annual' ? ' equivalent cost' : ' plan cost'}</span></div>
+        <p>{recommendation.tier_name} · {period === 'annual' ? `${money(recommendation.annual_cost, service.currency)} paid yearly` : period === 'monthly' ? `${money(recommendation.monthly_cost, service.currency)} paid monthly` : `${money(recommendation.monthly_cost, service.currency)}/month equivalent`}</p>
+        {Boolean(recommendation.monthly_savings) && <p>{money(recommendation.annual_savings ??
+          (service.spend !== null ? Math.max(0, service.spend * 12 - recommendation.annual_cost) : null), service.currency)} saved per year</p>}
+      </div>}
+      {period && !recommendation && service.users !== null && tiers.length > 0 && <p className="billing-label">No priced {periodLabel(period).toLowerCase()} option covers this user count.</p>}
+      {service.recommendations.length > 1 && <div className="billing-comparisons">
+        {service.recommendations.map((item) => <button key={item.billing_period}
+          className={period === item.billing_period ? 'selected-comparison' : ''}
+          onClick={() => setChosenPeriod(item.billing_period)}><span>{periodLabel(item.billing_period)}<small>{item.tier_name}</small></span>
+          <span>{money(item.monthly_cost, service.currency)}/mo<small>{item.billing_period === 'annual' ? `${money(item.annual_cost, service.currency)}/year upfront` : item.billing_period === 'monthly' ? 'Rolling monthly billing' : 'Billing commitment unspecified'}</small></span>
+        </button>)}
       </div>}
       <form className="detail-data" onSubmit={async (event) => {
         event.preventDefault(); if (dirty) await onEdit(users === '' ? null : Number(users), spend === '' ? null : Number(spend));
@@ -46,21 +78,23 @@ export const ServiceDetail = ({ service, open, onClose, onEdit, onSso, onRetry, 
       </form>
       <section className="detail-section"><h3>The recommendation</h3>
         <p className="explanation">{service.explanation || 'Our agent is looking for the right fit. Research continues even if you close this tab.'}</p></section>
-      <section className="detail-section"><div className="section-heading"><h3>Available plans <span className="count">{service.tiers.length}</span></h3>
+      <section className="detail-section" id="billing-plans" role={periods.length > 1 ? 'tabpanel' : undefined}
+        aria-labelledby={periods.length > 1 ? `billing-tab-${period}` : undefined}><div className="section-heading"><h3>{period ? `${periodLabel(period)} plans` : 'Available plans'} <span className="count">{tiers.length}</span></h3>
         <button className="text-link" onClick={onRetry} disabled={working}>{working ? <LoaderCircle size={13} className="spin" /> : <RefreshCw size={13} />}Re-analyse</button></div>
         {service.tiers.length === 0 ? <div className="empty-tiers">Available plans will appear here when research is complete.</div> :
-          <div className="tier-list">{service.tiers.map((tier, index) => <details className={`tier-row ${tier.name === service.suggested_tier ? 'recommended-tier' : ''}`} key={`${tier.name}-${index}`}>
-            <summary><span><strong>{tier.name}</strong>{tier.name === service.suggested_tier && <span className="recommended-label">BEST FIT</span>}
+          <div className="tier-list">{tiers.map((tier) => <details className={`tier-row ${tier.index === recommendation?.tier_index ? 'recommended-tier' : ''}`} key={`${tier.name}-${tier.index}`}>
+            <summary><span><strong>{tier.name}</strong>{tier.index === recommendation?.tier_index && <span className="recommended-label">BEST FIT</span>}
               <small>{tier.min_users}–{tier.max_users?.toLocaleString() ?? 'unlimited'} users</small></span>
-              <span className="tier-price">{tier.monthly_price === null ? 'Custom quote' : money(tier.monthly_price, tier.currency)}
-                {tier.monthly_price !== null && <small>/{tier.per_user ? 'user/' : ''}mo</small>}</span></summary>
+              <span className="tier-price">{tier.monthly_price === null ? 'Custom quote' : money(tier.monthly_price * (period === 'annual' ? 12 : 1), tier.currency)}
+                {tier.monthly_price !== null && <small>/{tier.per_user ? 'user/' : ''}{period === 'annual' ? 'yr' : 'mo'}</small>}</span></summary>
+            {tier.monthly_price !== null && period === 'annual' && <p>{money(tier.monthly_price, tier.currency)}/{tier.per_user ? 'user/' : ''}month equivalent, paid annually.</p>}
             <p>{tier.description}</p>{tier.minimum_seats > 1 && <p>Minimum purchase: {tier.minimum_seats} seats.</p>}
             {tier.source_url.startsWith('https://') && <a className="text-link" href={tier.source_url} target="_blank" rel="noopener noreferrer">View pricing source<ArrowUpRight size={13} /></a>}
           </details>)}</div>}
         {service.researched_at && <p className="fine-print">Researched {new Date(service.researched_at).toLocaleDateString('en-GB')}.</p>}
       </section>
-      {service.events.length > 0 && <details className="activity"><summary>Agent activity · {service.events.length} events</summary>
-        {service.events.map((event, index) => <p key={index}>{event}</p>)}</details>}
+      {events.length > 0 && <details className="activity"><summary>Agent activity · {events.length} events</summary>
+        {events.map((event, index) => <p key={index}>{event}</p>)}</details>}
     </Dialog.Content></Dialog.Portal>
   </Dialog.Root>;
 };
